@@ -1,0 +1,32 @@
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from app.core.config import settings
+from app.db.database import Base, engine
+from app.routers import complaints, health
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Importing the complaints router registers the model before table creation.
+    Base.metadata.create_all(bind=engine)
+    yield
+    engine.dispose()
+
+
+app = FastAPI(title=settings.app_name, version="0.1.0", lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins,
+    allow_methods=["GET", "POST", "PATCH"],
+    allow_headers=["Content-Type"],
+)
+app.include_router(health.router)
+app.include_router(complaints.router)
+
+
+@app.get("/", tags=["root"])
+def root():
+    return {"message": settings.app_name, "docs": "/docs", "health": "/health"}
