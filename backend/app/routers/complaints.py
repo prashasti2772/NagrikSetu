@@ -5,7 +5,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
-from app.models.complaint import Complaint, utc_now
+from app.core.security import optional_user, require_authority
+from app.core.workflow import record, change_status
+from app.models.complaint import Complaint
 from app.schemas.complaint import ComplaintCreate, ComplaintRead, ComplaintStatusUpdate
 
 
@@ -22,9 +24,13 @@ def get_complaint_or_404(complaint_id: int, db: Session) -> Complaint:
 
 
 @router.post("", response_model=ComplaintRead, status_code=status.HTTP_201_CREATED)
-def create_complaint(payload: ComplaintCreate, db: Database):
-    complaint = Complaint(**payload.model_dump(mode="json"))
+def create_complaint(payload: ComplaintCreate, db: Database, user = Depends(optional_user)):
+    if user is not None and user.role != "citizen":
+        raise HTTPException(403, "Only citizens can submit authenticated complaints")
+    complaint = Complaint(**payload.model_dump(mode="json"), citizen_id=user.id if user else None, priority=payload.severity)
     db.add(complaint)
+    db.flush()
+    record(db, complaint, user, None, "Complaint submitted")
     db.commit()
     db.refresh(complaint)
     return complaint
@@ -48,11 +54,10 @@ def get_complaint(complaint_id: ComplaintId, db: Database):
 
 @router.patch("/{complaint_id}/status", response_model=ComplaintRead)
 def update_complaint_status(
-    complaint_id: ComplaintId, payload: ComplaintStatusUpdate, db: Database,
+    complaint_id: ComplaintId, payload: ComplaintStatusUpdate, db: Database, user = Depends(require_authority),
 ):
     complaint = get_complaint_or_404(complaint_id, db)
-    complaint.status = payload.status
-    complaint.updated_at = utc_now()
+    change_status(db, complaint, user, payload.status)
     db.commit()
     db.refresh(complaint)
     return complaint

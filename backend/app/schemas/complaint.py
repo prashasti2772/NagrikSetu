@@ -52,6 +52,15 @@ class ComplaintRead(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+    citizen_id: int | None
+    assigned_department_id: int | None
+    assigned_officer_id: int | None
+    priority: Severity
+    resolution_notes: str | None
+    evidence_url: str | None
+    resolved_at: datetime | None
+    verification_status: Literal["pending", "approved", "rejected", "reopened"]
+
     @field_serializer("created_at", "updated_at")
     def serialize_timestamp(self, value: datetime) -> str:
         return value.replace(tzinfo=timezone.utc).isoformat()

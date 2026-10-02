@@ -4,14 +4,14 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
-from app.db.database import Base, engine
-from app.routers import complaints, health
+from app.db.database import engine
+from app.routers import complaints, health, auth, workflow
+from app.db.initialize import initialize_database
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Importing the complaints router registers the model before table creation.
-    Base.metadata.create_all(bind=engine)
+    initialize_database(engine)
     yield
     engine.dispose()
 
@@ -21,10 +21,12 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
     allow_methods=["GET", "POST", "PATCH"],
-    allow_headers=["Content-Type"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 app.include_router(health.router)
 app.include_router(complaints.router)
+app.include_router(auth.router)
+app.include_router(workflow.router)
 
 
 @app.get("/", tags=["root"])

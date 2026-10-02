@@ -1,7 +1,9 @@
+.env
+.env.*
+!.env.example
 .venv/
 __pycache__/
 *.py[cod]
-.env
 *.db
-*.db-shm
-*.db-wal
+*.db-*
+*.sqlite*

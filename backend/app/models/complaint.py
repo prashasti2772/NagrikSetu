@@ -3,7 +3,7 @@
 from datetime import datetime, timezone
 from enum import Enum
 
-from sqlalchemy import DateTime, Enum as SQLAlchemyEnum, Float, String, Text
+from sqlalchemy import DateTime, Enum as SQLAlchemyEnum, Float, String, Text, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.database import Base
@@ -43,3 +43,11 @@ class Complaint(Base):
     assigned_department: Mapped[str | None] = mapped_column(String(100), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now)
+    citizen_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    assigned_department_id: Mapped[int | None] = mapped_column(ForeignKey("departments.id"))
+    assigned_officer_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    priority: Mapped[str] = mapped_column(String(20), default="medium", server_default="medium")
+    resolution_notes: Mapped[str | None] = mapped_column(Text)
+    evidence_url: Mapped[str | None] = mapped_column(String(2048))
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime)
+    verification_status: Mapped[str] = mapped_column(String(20), default="pending", server_default="pending")
