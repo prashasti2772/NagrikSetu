@@ -18,8 +18,10 @@ class Base(DeclarativeBase):
 
 
 def verified_ssl_context() -> ssl.SSLContext:
-    """Trust certifi's CA bundle, plus an explicitly configured private root CA."""
+    """Trust certifi, system roots, and an explicitly configured private root CA."""
     context = ssl.create_default_context(cafile=certifi.where())
+    # Supplying cafile skips default roots; retain Windows/system trust as well.
+    context.load_default_certs(ssl.Purpose.SERVER_AUTH)
     custom_ca = os.getenv("SSL_CERT_FILE", "").strip()
     if custom_ca:
         context.load_verify_locations(cafile=custom_ca)

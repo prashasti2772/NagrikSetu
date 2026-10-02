@@ -24,6 +24,14 @@ class TLSDatabaseTests(unittest.TestCase):
         self.assertTrue(context.check_hostname)
         self.assertGreater(len(context.get_ca_certs()), 0)
 
+    def test_system_roots_are_loaded_without_weakening_verification(self):
+        with patch.dict(os.environ, {'SSL_CERT_FILE': ''}):
+            with patch.object(ssl.SSLContext, 'load_default_certs', autospec=True) as load_roots:
+                context = database.verified_ssl_context()
+                load_roots.assert_called_once_with(context, ssl.Purpose.SERVER_AUTH)
+        self.assertEqual(context.verify_mode, ssl.CERT_REQUIRED)
+        self.assertTrue(context.check_hostname)
+
     def test_explicit_ca_augments_verified_context(self):
         with patch.dict(os.environ, {'SSL_CERT_FILE': certifi.where()}):
             context = database.verified_ssl_context()

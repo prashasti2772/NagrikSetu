@@ -53,16 +53,31 @@ $env:DATABASE_URL = [System.Net.NetworkCredential]::new('', $databaseInput).Pass
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --reload
 ```
 
-PostgreSQL connections use verified TLS with the certifi CA bundle by default and a
+PostgreSQL connections use verified TLS with certifi plus system/Windows trusted
+roots by default and a
 10-second driver timeout. The verified SSLContext is passed to pg8000 through
 SQLAlchemy connect_args; certificate and hostname verification remain enabled.
 `?sslmode=verify-full` and `?sslmode=require` both enable certificate and hostname
 verification here. For a local PostgreSQL server without TLS, append
 `?sslmode=disable`. Other sslmode values are rejected. If your server requires a
 custom trusted CA, set `SSL_CERT_FILE` to its PEM certificate file. That CA is
-loaded in addition to certifi's public roots, without disabling verification. Obtain
+loaded in addition to certifi and system roots, without disabling verification. Obtain
 the CA from the database provider or your trusted network administrator; certifi
 alone cannot validate a private/self-signed CA that is absent from its bundle.
+
+For Supabase's private database CA, open the project's **Database Settings > SSL
+Configuration > Download certificate**. Save that CA locally and set its path in the
+same PowerShell terminal that starts the backend:
+
+```powershell
+$env:SSL_CERT_FILE = (Resolve-Path -LiteralPath (Read-Host 'Downloaded Supabase CA certificate path')).Path
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload
+```
+
+Keep the existing `DATABASE_URL` in that terminal. Downloading a certificate without
+setting `SSL_CERT_FILE` does not add it to the backend's trust store. Restart the
+backend after changing the CA setting. Never download/trust a certificate from an
+unverified failing TLS connection. See [Supabase's verified TLS instructions](https://supabase.com/docs/guides/platform/ssl-enforcement).
 
 Switching the URL selects a different database; it does not migrate SQLite data.
 Existing automatic table creation remains in place at startup. A configured but
