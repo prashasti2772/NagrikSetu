@@ -8,3 +8,4 @@ pwdlib[argon2]>=0.2,<1
 email-validator>=2,<3
 alembic>=1.14,<2
 scikit-learn>=1.6,<2
+certifi>=2024.8.30

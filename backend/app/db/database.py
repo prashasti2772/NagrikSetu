@@ -1,6 +1,9 @@
 """Shared database setup for local SQLite and PostgreSQL via pg8000."""
 
+import os
 import ssl
+
+import certifi
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine, make_url
@@ -12,6 +15,15 @@ from app.core.config import settings
 
 class Base(DeclarativeBase):
     pass
+
+
+def verified_ssl_context() -> ssl.SSLContext:
+    """Trust certifi's CA bundle, plus an explicitly configured private root CA."""
+    context = ssl.create_default_context(cafile=certifi.where())
+    custom_ca = os.getenv("SSL_CERT_FILE", "").strip()
+    if custom_ca:
+        context.load_verify_locations(cafile=custom_ca)
+    return context
 
 
 def build_engine(database_url: str) -> Engine:
@@ -32,7 +44,7 @@ def build_engine(database_url: str) -> Engine:
             pool_pre_ping=True,
             hide_parameters=True,
             connect_args={
-                "ssl_context": False if ssl_mode == "disable" else ssl.create_default_context(),
+                "ssl_context": False if ssl_mode == "disable" else verified_ssl_context(),
                 "timeout": 10,
             },
         )

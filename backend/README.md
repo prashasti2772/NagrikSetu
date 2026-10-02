@@ -53,11 +53,16 @@ $env:DATABASE_URL = [System.Net.NetworkCredential]::new('', $databaseInput).Pass
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --reload
 ```
 
-PostgreSQL connections use verified TLS by default and a 10-second driver timeout.
+PostgreSQL connections use verified TLS with the certifi CA bundle by default and a
+10-second driver timeout. The verified SSLContext is passed to pg8000 through
+SQLAlchemy connect_args; certificate and hostname verification remain enabled.
 `?sslmode=verify-full` and `?sslmode=require` both enable certificate and hostname
 verification here. For a local PostgreSQL server without TLS, append
 `?sslmode=disable`. Other sslmode values are rejected. If your server requires a
-custom trusted CA, configure Python's `SSL_CERT_FILE` environment variable.
+custom trusted CA, set `SSL_CERT_FILE` to its PEM certificate file. That CA is
+loaded in addition to certifi's public roots, without disabling verification. Obtain
+the CA from the database provider or your trusted network administrator; certifi
+alone cannot validate a private/self-signed CA that is absent from its bundle.
 
 Switching the URL selects a different database; it does not migrate SQLite data.
 Existing automatic table creation remains in place at startup. A configured but
