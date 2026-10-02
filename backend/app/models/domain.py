@@ -56,3 +56,34 @@ class ComplaintRemark(Base):
     author_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     text: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+class Notification(Base):
+    __tablename__ = "notifications"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    title: Mapped[str] = mapped_column(String(200))
+    message: Mapped[str] = mapped_column(Text)
+    type: Mapped[str] = mapped_column(String(50))
+    is_read: Mapped[bool] = mapped_column(Boolean, default=False)
+    complaint_id: Mapped[int | None] = mapped_column(ForeignKey("complaints.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+class ComplaintEvidence(Base):
+    __tablename__ = "complaint_evidence"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    complaint_id: Mapped[int] = mapped_column(ForeignKey("complaints.id"), index=True)
+    image_url: Mapped[str] = mapped_column(String(2048))
+    evidence_type: Mapped[str] = mapped_column(String(30))
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    uploaded_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+
+class ComplaintSuggestion(Base):
+    __tablename__ = "complaint_suggestions"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    complaint_id: Mapped[int] = mapped_column(ForeignKey("complaints.id"), unique=True)
+    suggested_category: Mapped[str] = mapped_column(String(100))
+    suggested_priority: Mapped[str] = mapped_column(String(20))
+    confidence: Mapped[float] = mapped_column()
+    recommended_department_id: Mapped[int | None] = mapped_column(ForeignKey("departments.id"))
+    model_version: Mapped[str] = mapped_column(String(50))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)

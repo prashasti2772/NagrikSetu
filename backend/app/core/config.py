@@ -21,6 +21,15 @@ class Settings:
     access_token_expire_minutes: int = field(default_factory=lambda: int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60")))
     otp_expire_minutes: int = field(default_factory=lambda: int(os.getenv("OTP_EXPIRE_MINUTES", "10")))
     app_env: str = field(default_factory=lambda: os.getenv("APP_ENV", "development"))
+    duplicate_threshold: float = field(default_factory=lambda: float(os.getenv("DUPLICATE_THRESHOLD", "0.65")))
+    duplicate_lookback_days: int = field(default_factory=lambda: int(os.getenv("DUPLICATE_LOOKBACK_DAYS", "90")))
+    duplicate_candidate_limit: int = field(default_factory=lambda: int(os.getenv("DUPLICATE_CANDIDATE_LIMIT", "500")))
+    rate_limit_window_seconds: int = field(default_factory=lambda: int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60")))
+    rate_limit_login: int = field(default_factory=lambda: int(os.getenv("RATE_LIMIT_LOGIN", "10")))
+    rate_limit_register: int = field(default_factory=lambda: int(os.getenv("RATE_LIMIT_REGISTER", "5")))
+    rate_limit_forgot: int = field(default_factory=lambda: int(os.getenv("RATE_LIMIT_FORGOT", "5")))
+    rate_limit_verify: int = field(default_factory=lambda: int(os.getenv("RATE_LIMIT_VERIFY", "10")))
+    rate_limit_intelligence: int = field(default_factory=lambda: int(os.getenv("RATE_LIMIT_INTELLIGENCE", "20")))
     cors_origins: list[str] = field(default_factory=lambda: [
         origin.strip()
         for origin in os.getenv(
@@ -38,3 +47,10 @@ if settings.app_env != "development" and len(os.getenv("JWT_SECRET", "").strip()
     raise ValueError("Configure JWT_SECRET with at least 32 characters outside development")
 if settings.access_token_expire_minutes <= 0 or settings.otp_expire_minutes <= 0:
     raise ValueError("Token and OTP expiry must be positive")
+
+if not 0 <= settings.duplicate_threshold <= 1:
+    raise ValueError("DUPLICATE_THRESHOLD must be between 0 and 1")
+if any(value <= 0 for value in [settings.duplicate_lookback_days, settings.duplicate_candidate_limit,
+    settings.rate_limit_window_seconds, settings.rate_limit_login, settings.rate_limit_register,
+    settings.rate_limit_forgot, settings.rate_limit_verify, settings.rate_limit_intelligence]):
+    raise ValueError("Rate limits and duplicate search limits must be positive")

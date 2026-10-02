@@ -2,6 +2,7 @@ from fastapi import HTTPException
 from sqlalchemy import or_
 from app.models.complaint import Complaint, ComplaintStatus, utc_now
 from app.models.domain import ComplaintStatusHistory
+from app.services.notifications import workflow_notifications
 
 # Authorities work within their department or their explicit officer assignments.
 # Administrators can route any complaint, including anonymous legacy reports.
@@ -23,10 +24,11 @@ def permitted(complaint, user):
         return
     raise HTTPException(403, "Complaint access denied")
 
-def record(db, complaint, user, old_status, remarks=None):
+def record(db, complaint, user, old_status, remarks=None, event=None):
     db.add(ComplaintStatusHistory(complaint_id=complaint.id, old_status=old_status,
         new_status=complaint.status, changed_by_user_id=user.id if user else None, remarks=remarks))
     complaint.updated_at = utc_now()
+    workflow_notifications(db, complaint, old_status, event)
 
 TRANSITIONS = {
     "submitted": {"under_review", "assigned"},

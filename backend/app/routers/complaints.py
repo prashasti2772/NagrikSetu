@@ -8,6 +8,8 @@ from app.db.database import get_db
 from app.core.security import optional_user, require_authority
 from app.core.workflow import record, change_status
 from app.models.complaint import Complaint
+from app.models.domain import ComplaintEvidence
+from app.services.intelligence import save_suggestion
 from app.schemas.complaint import ComplaintCreate, ComplaintRead, ComplaintStatusUpdate
 
 
@@ -30,6 +32,10 @@ def create_complaint(payload: ComplaintCreate, db: Database, user = Depends(opti
     complaint = Complaint(**payload.model_dump(mode="json"), citizen_id=user.id if user else None, priority=payload.severity)
     db.add(complaint)
     db.flush()
+    save_suggestion(db, complaint)
+    if complaint.image_url:
+        db.add(ComplaintEvidence(complaint_id=complaint.id, image_url=complaint.image_url,
+                                 evidence_type="report", uploaded_by=user.id if user else None))
     record(db, complaint, user, None, "Complaint submitted")
     db.commit()
     db.refresh(complaint)

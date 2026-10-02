@@ -24,7 +24,11 @@ class Delivery:
 
 class BackendTests(unittest.TestCase):
     def setUp(self):
+        from app.core.rate_limit import limiter
+        limiter.clear()
         Base.metadata.drop_all(engine)
+        with engine.begin() as connection:
+            connection.execute(text("DROP TABLE IF EXISTS alembic_version"))
         self.delivery = Delivery()
         app.dependency_overrides[get_otp_delivery] = lambda: self.delivery
         self.client = TestClient(app)

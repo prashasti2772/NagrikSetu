@@ -86,7 +86,7 @@ has a 60-second per-account cooldown. Reset tokens are single-use and expire wit
 the OTP. Password resets invalidate existing access tokens. Development delivery
 logs the code to the terminal only; API responses never contain OTPs. Replace
 `get_otp_delivery` with a Brevo adapter for deployed email; the Brevo environment
-variables are placeholders and no external email is sent yet. Use a shared ingress
+variables are placeholders and no external email is sent yet. The prototype includes per-process limits; use a shared ingress
 rate limiter for deployment-wide login and recovery abuse protection.
 
 ## Workflow and permissions
@@ -132,12 +132,13 @@ an isolated temporary database.
 
 ## Schema upgrades and checks
 
-Startup creates new tables, adds missing complaint columns without deleting existing
-rows, backfills priority from severity, and seeds eleven departments idempotently.
-Run the initial upgrade with a single process before starting multiple workers.
-This additive upgrade supports the original schema; use versioned migrations for
-future schema changes. Existing string `assigned_department` values are preserved;
-an admin assigns the corresponding department IDs to route legacy complaints.
+Startup runs Alembic upgrades to `head`, then seeds eleven departments idempotently.
+Revision `0001_phase2` freezes the original Phase 2 schema and safely adopts existing
+Phase 2 tables. It also adds the known missing Phase 1 complaint columns and preserves
+all existing rows. Revision `0002_phase3` adds notifications, evidence metadata and
+separate complaint suggestions. No migration imports mutable application models.
+Run schema upgrades once before starting multiple application workers. Existing string
+`assigned_department` values remain intact; admins assign department IDs to route them.
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
@@ -148,3 +149,138 @@ Tests use temporary SQLite databases and cover authentication, recovery, permiss
 complaint workflows/history, health endpoints and preservation of legacy data.
 PostgreSQL URL/driver construction is checked without requiring credentials;
 live Supabase connectivity needs an externally configured `DATABASE_URL`.
+
+## Alembic migration commands
+
+Run from `backend`, with `DATABASE_URL` set in the process environment for PostgreSQL,
+or unset for local SQLite. `.env` is not automatically loaded. No URL or password goes
+in `alembic.ini`.
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m alembic current
+.\.venv\Scripts\python.exe -m alembic upgrade head
+.\.venv\Scripts\python.exe -m alembic history
+.\.venv\Scripts\python.exe -m alembic check
+```
+
+Before upgrading an existing local SQLite installation, create a consistent backup
+(the source must already exist; the timestamp prevents replacing prior backups):
+
+```powershell
+.\.venv\Scripts\python.exe -c "import sqlite3, datetime; source=sqlite3.connect('file:nagriksetu.db?mode=ro', uri=True); target=sqlite3.connect('nagriksetu-backup-'+datetime.datetime.now().strftime('%Y%m%d-%H%M%S')+'.db'); source.backup(target); target.close(); source.close()"
+```
+
+An unversioned Phase 2 installation uses the same `upgrade head` command: the baseline
+inspects and adopts existing tables, rather than dropping them or blindly stamping.
+Existing unexpected missing columns fail with a migration error. It does not rewrite
+unknown legacy constraints/types. SQLite TIMESTAMP and DATETIME are compared as
+equivalent to accommodate the earlier additive updater. Back up PostgreSQL with your database provider or
+`pg_dump` before deployment migrations. Fresh databases are also fully supported.
+Startup preserves local convenience by invoking the same upgrade, with reference data
+seeded afterwards. `alembic upgrade` alone updates schema; app startup seeds departments.
+
+For future schema work, edit the models, generate a revision, review it, then upgrade:
+
+```powershell
+.\.venv\Scripts\python.exe -m alembic revision --autogenerate -m "describe schema change"
+.\.venv\Scripts\python.exe -m alembic upgrade head
+```
+
+Offline SQL for a **new** database can be generated with `alembic upgrade head --sql`.
+Existing installations need online inspection for adoption. `alembic downgrade
+0001_phase2` removes Phase 3 tables and their data; use only on disposable databases
+or with a recovery plan. Do not downgrade an existing installation merely to initialize
+migrations. Tests validate fresh creation, Phase 1/2 adoption, idempotence, schema
+agreement with models, a disposable downgrade/upgrade, and PostgreSQL SQL generation.
+Live PostgreSQL/Supabase execution still needs a configured database connection.
+
+## Phase 3 endpoints and contracts
+
+All paths below start with `/api/v1`:
+
+| Method | Path | Access / purpose |
+| --- | --- | --- |
+| GET | `/admin/users`, `/admin/users/{id}` | Admin user listing/detail |
+| POST | `/admin/authorities` | Admin creates an authority with a hashed temporary password |
+| PATCH | `/admin/users/{id}` | Admin edits department_id, designation, is_active only |
+| GET | `/admin/officers` | Admin workload and availability |
+| GET | `/authority/analytics/summary` | Scoped status counts and average resolution hours |
+| GET | `/authority/analytics/categories` | Scoped category counts |
+| GET | `/authority/analytics/departments` | Scoped department counts, including unassigned |
+| GET | `/authority/analytics/trends` | Scoped daily complaint creation counts |
+| GET | `/notifications` | Own notifications, optionally filtered by is_read |
+| PATCH | `/notifications/{id}/read`, `/notifications/read-all` | Mark own notifications read |
+| POST | `/intelligence/analyze-complaint` | Authenticated, local text suggestions |
+| GET | `/authority/complaints/{id}/duplicates` | Scoped staff duplicate candidates |
+| GET, POST | `/complaints/{id}/evidence` | Owner/scoped staff evidence metadata |
+
+User filters: `role`, `department` (ID), `is_active`, `search` (name/email/employee ID).
+User/officer/notification lists use `offset` and `limit` (maximum 100). Officer listing
+supports `department` and `is_active`. Creation accepts full_name, email, employee_id,
+designation, department_id and temporary_password; extra role/password-hash fields are
+rejected. There is no automatic email delivery or forced first-login password change;
+the existing password-recovery flow can set a replacement password. Staff changes
+invalidate prior tokens when deactivating or moving departments. Active assignments,
+including verification-pending reports, must be reassigned before an officer is moved
+or deactivated. Current workload uses the complaint's current assigned officer and
+current status, not historical attribution. `current_status` is inactive, busy, or
+available, based on account state and active assignment count.
+
+Analytics accepts inclusive UTC creation-date filters `date_from` / `date_to`
+(`YYYY-MM-DD`). Every query follows the existing authority department/officer scope.
+Average resolution hours include only currently citizen-confirmed `resolved` reports
+with valid created_at/resolved_at values; the duration ends when staff submitted the
+resolution, excluding the citizen's confirmation delay. Missing samples return null
+and `resolution_sample_count=0`. Trends return observed dates, with no invented rows.
+
+Notifications are committed atomically with complaint submission, assignment, status
+change, resolution submission, verification request and reopening. Inactive accounts
+cannot log in to retrieve them. There is no external push/email transport.
+
+Evidence is URL metadata only: image_url, evidence_type (`report`, `resolution`,
+`supporting`), uploaded_at (server UTC), uploaded_by (authenticated user or null for
+anonymous creation). Existing complaint image and resolution URLs are recorded on new
+submissions/resolutions. Old URLs remain preserved on complaints; historical uploader
+and upload timestamps are not invented. No URL is fetched, and no binary file is stored.
+Cloudinary or Supabase Storage can later supply URLs via a storage adapter.
+
+## Local complaint intelligence
+
+No paid service, API key, model download or network call is used. scikit-learn fits
+TF-IDF vectors to the synthetic examples in `data/category_examples.json`. Category
+centroid cosine similarity supplies a suggestion, supporting keywords and an uncalibrated
+confidence score. This is an English prototype with no claimed production accuracy.
+Priority is a transparent ordered phrase heuristic: critical, high, low signals,
+otherwise medium. It does not guarantee emergency detection or understand negation.
+
+Analysis accepts title, description and optional latitude/longitude; coordinates are
+validated and reserved for future geographic scoring. Response fields include
+suggested_category, confidence, category_keywords, suggested_priority, priority_signals,
+recommended_department (ID/name or null), possible_duplicates (IDs/similarity),
+model_version and limitations. For analysis, department follows the predicted category.
+On creation, suggestions are stored separately in `complaint_suggestions`; department
+recommendation follows the user-selected category. User category, severity, priority,
+assignment and workflow are never overwritten by intelligence.
+
+Duplicates use TF-IDF/cosine against at most `DUPLICATE_CANDIDATE_LIMIT` recent scoped
+reports within `DUPLICATE_LOOKBACK_DAYS`, filtered by `DUPLICATE_THRESHOLD`; at most ten
+matches are returned. Citizens compare only their own complaints. Authorities compare
+permitted complaints, and admins can compare all. The source complaint is excluded from
+its duplicate list. No automatic merge/delete occurs. Corpus/version details and
+limitations are documented in `data/README.md`.
+
+## Prototype request limits
+
+The Python standard-library sliding-window limiter is thread-safe and bounded to
+10,000 active peer/endpoint keys. Defaults per 60 seconds: login 10, registration 5,
+forgot-password 5, OTP verification 10, reset-password 10, intelligence 20. Configure
+limits through `.env.example` variables in the process environment. Rejected requests
+return 429 plus Retry-After; expired windows recover automatically. Counts are per
+endpoint and direct peer IP, including failed requests. Raw forwarding headers are
+ignored; only configure Uvicorn proxy trust for an actual trusted proxy.
+
+Counters reset on restart and are independent across workers/instances. This is a
+single-process prototype limiter, not deployment-wide abuse protection; use a shared
+free gateway/limiter when scaling. Redis is not required. Tests clear only in-memory
+limiter state between isolated cases.

@@ -1,0 +1,134 @@
+[
+  {
+    "category": "Roads & Infrastructure",
+    "text": "pothole broken road damaged pavement footpath sidewalk bridge repair"
+  },
+  {
+    "category": "Roads & Infrastructure",
+    "text": "road surface cracked dangerous potholes on street"
+  },
+  {
+    "category": "Roads & Infrastructure",
+    "text": "broken bridge railing damaged sidewalk construction"
+  },
+  {
+    "category": "Sanitation",
+    "text": "garbage waste rubbish trash collection overflowing dustbin litter"
+  },
+  {
+    "category": "Sanitation",
+    "text": "trash bins not collected smell dirty street"
+  },
+  {
+    "category": "Sanitation",
+    "text": "waste dumping sanitation rubbish cleanup"
+  },
+  {
+    "category": "Water Supply",
+    "text": "water supply shortage no drinking water leaking pipe pipeline"
+  },
+  {
+    "category": "Water Supply",
+    "text": "water tap dry low pressure water supply"
+  },
+  {
+    "category": "Water Supply",
+    "text": "burst drinking water main pipe leak"
+  },
+  {
+    "category": "Street Lighting",
+    "text": "street light lamp dark road lighting pole not working"
+  },
+  {
+    "category": "Street Lighting",
+    "text": "broken streetlight flickering lamp at night"
+  },
+  {
+    "category": "Street Lighting",
+    "text": "street lighting bulb damaged electric pole light"
+  },
+  {
+    "category": "Drainage",
+    "text": "drain blocked sewer sewage overflow gutter flooding drainage"
+  },
+  {
+    "category": "Drainage",
+    "text": "sewage leaking blocked stormwater drain"
+  },
+  {
+    "category": "Drainage",
+    "text": "clogged drainage waterlogging overflowing sewer"
+  },
+  {
+    "category": "Parks & Gardens",
+    "text": "park garden playground broken swing grass maintenance"
+  },
+  {
+    "category": "Parks & Gardens",
+    "text": "public garden park benches damaged play equipment"
+  },
+  {
+    "category": "Parks & Gardens",
+    "text": "overgrown lawn park playground slide repair"
+  },
+  {
+    "category": "Traffic & Parking",
+    "text": "traffic parking congestion illegal parked vehicles signal"
+  },
+  {
+    "category": "Traffic & Parking",
+    "text": "cars blocking parking traffic jam junction"
+  },
+  {
+    "category": "Traffic & Parking",
+    "text": "broken traffic signal illegal parking crossing"
+  },
+  {
+    "category": "Public Safety",
+    "text": "public safety crime assault theft violence unsafe fire"
+  },
+  {
+    "category": "Public Safety",
+    "text": "exposed live wire electric shock dangerous fire"
+  },
+  {
+    "category": "Public Safety",
+    "text": "building collapse immediate danger public safety"
+  },
+  {
+    "category": "Animal Welfare",
+    "text": "stray dog injured animal cattle welfare rescue"
+  },
+  {
+    "category": "Animal Welfare",
+    "text": "injured cat dog animal needs rescue"
+  },
+  {
+    "category": "Animal Welfare",
+    "text": "stray cattle aggressive dogs animal cruelty"
+  },
+  {
+    "category": "Environment",
+    "text": "air pollution smoke burning trees environment noise"
+  },
+  {
+    "category": "Environment",
+    "text": "illegal tree cutting pollution industrial smoke"
+  },
+  {
+    "category": "Environment",
+    "text": "noise pollution burning waste environmental damage"
+  },
+  {
+    "category": "Other",
+    "text": "general civic request miscellaneous public service concern"
+  },
+  {
+    "category": "Other",
+    "text": "community service suggestion civic information request"
+  },
+  {
+    "category": "Other",
+    "text": "municipal office service feedback other issue"
+  }
+]

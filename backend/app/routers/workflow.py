@@ -7,7 +7,7 @@ from app.db.database import get_db
 from app.core.security import require_admin, require_authority, require_citizen, get_current_user
 from app.core.workflow import scope, permitted, record, change_status
 from app.models.complaint import Complaint, ComplaintStatus, utc_now
-from app.models.domain import Department, User, ComplaintRemark, ComplaintStatusHistory
+from app.models.domain import Department, User, ComplaintRemark, ComplaintStatusHistory, ComplaintEvidence
 from app.schemas.complaint import ComplaintRead, ComplaintStatusUpdate, Severity
 from app.schemas.domain import (DepartmentCreate, DepartmentPatch, DepartmentRead, Assignment, Remark,
     Resolution, Verification, HistoryRead, RemarkRead)
@@ -128,7 +128,7 @@ def assign(complaint_id: int, payload: Assignment, db: DB, user: Authority):
         c.status = ComplaintStatus.assigned
     elif c.status == "assigned":
         c.status = ComplaintStatus.under_review
-    record(db, c, user, old, "Assignment updated")
+    record(db, c, user, old, "Assignment updated", event="complaint_assigned")
     return save(db, c)
 
 @router.patch("/authority/complaints/{complaint_id}/status", response_model=ComplaintRead)
@@ -156,6 +156,9 @@ def resolve(complaint_id: int, payload: Resolution, db: DB, user: Authority):
     c.resolution_notes = payload.resolution_notes
     c.evidence_url = str(payload.evidence_url) if payload.evidence_url else None
     c.resolved_at = utc_now()
+    if c.evidence_url:
+        db.add(ComplaintEvidence(complaint_id=c.id, image_url=c.evidence_url,
+                                 evidence_type="resolution", uploaded_by=user.id))
     record(db, c, user, old, payload.resolution_notes)
     return save(db, c)
 
