@@ -5,8 +5,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
-from app.core.security import optional_user, require_authority
-from app.core.workflow import record, change_status
+from app.core.security import get_current_user, require_authority, require_citizen
+from app.core.workflow import record, change_status, permitted, scope
 from app.models.complaint import Complaint
 from app.models.domain import ComplaintEvidence
 from app.services.intelligence import save_suggestion
@@ -26,10 +26,8 @@ def get_complaint_or_404(complaint_id: int, db: Session) -> Complaint:
 
 
 @router.post("", response_model=ComplaintRead, status_code=status.HTTP_201_CREATED)
-def create_complaint(payload: ComplaintCreate, db: Database, user = Depends(optional_user)):
-    if user is not None and user.role != "citizen":
-        raise HTTPException(403, "Only citizens can submit authenticated complaints")
-    complaint = Complaint(**payload.model_dump(mode="json"), citizen_id=user.id if user else None, priority=payload.severity)
+def create_complaint(payload: ComplaintCreate, db: Database, user = Depends(require_citizen)):
+    complaint = Complaint(**payload.model_dump(mode="json"), citizen_id=user.id, priority=payload.severity)
     db.add(complaint)
     db.flush()
     save_suggestion(db, complaint)
@@ -45,17 +43,23 @@ def create_complaint(payload: ComplaintCreate, db: Database, user = Depends(opti
 @router.get("", response_model=list[ComplaintRead])
 def list_complaints(
     db: Database,
+    user = Depends(get_current_user),
     offset: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ):
-    return db.scalars(
-        select(Complaint).order_by(Complaint.id.desc()).offset(offset).limit(limit)
-    ).all()
+    query = select(Complaint)
+    if user.role == "citizen":
+        query = query.where(Complaint.citizen_id == user.id)
+    else:
+        query = query.where(scope(user))
+    return db.scalars(query.order_by(Complaint.id.desc()).offset(offset).limit(limit)).all()
 
 
 @router.get("/{complaint_id}", response_model=ComplaintRead)
-def get_complaint(complaint_id: ComplaintId, db: Database):
-    return get_complaint_or_404(complaint_id, db)
+def get_complaint(complaint_id: ComplaintId, db: Database, user = Depends(get_current_user)):
+    complaint = get_complaint_or_404(complaint_id, db)
+    permitted(complaint, user)
+    return complaint
 
 
 @router.patch("/{complaint_id}/status", response_model=ComplaintRead)

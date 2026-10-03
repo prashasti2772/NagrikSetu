@@ -77,14 +77,19 @@ class BackendTests(unittest.TestCase):
     def test_health_legacy_and_auth(self):
         for url in ['/', '/health', '/health/db']:
             self.assertEqual(self.client.get(url).status_code, 200)
-        c = self.create()
-        self.assertIsNone(c['citizen_id'])
-        self.assertEqual(self.client.get('/api/v1/complaints').json()[0]['id'], c['id'])
-        self.assertEqual(self.client.get(f"/api/v1/complaints/{c['id']}").status_code, 200)
+        payload = {'title': 'Broken road', 'description': 'Please repair', 'category': 'Roads',
+                   'latitude': 22, 'longitude': 77, 'address': 'Main Road'}
+        self.assertEqual(self.client.post('/api/v1/complaints', json=payload).status_code, 401)
+        c = self.create(self.ch)
+        self.assertEqual(c['citizen_id'], self.citizen['id'])
+        self.assertEqual(self.client.get('/api/v1/complaints').status_code, 401)
+        self.assertEqual(self.client.get(f"/api/v1/complaints/{c['id']}").status_code, 401)
+        self.assertEqual(self.client.get(f"/api/v1/complaints/{c['id']}", headers=self.ch).status_code, 200)
         self.assertEqual(self.client.patch(f"/api/v1/complaints/{c['id']}/status", json={'status':'resolved'}).status_code, 401)
         self.assertEqual(self.client.get('/api/v1/auth/me', headers=self.ch).json()['role'], 'citizen')
         self.assertEqual(self.client.get('/api/v1/auth/me', headers={'Authorization':'Bearer bad'}).status_code, 401)
         self.assertEqual(self.client.post('/api/v1/auth/login', json={'email':'citizen@example.com','password':'wrong'}).status_code, 401)
+        self.assertEqual(self.client.get(f"/api/v1/complaints/{c['id']}", headers=self.login('other@example.com')).status_code, 403)
         self.assertEqual(self.client.post('/api/v1/auth/register', json={'full_name':'X','email':'x@example.com','password':self.password,'role':'admin'}).status_code, 422)
         self.assertEqual(self.client.post('/api/v1/auth/register', json={'full_name':'X','email':'CITIZEN@example.com','password':self.password}).status_code, 409)
         self.assertEqual(self.client.get('/api/v1/authority/dashboard', headers=self.ch).status_code, 403)
@@ -93,6 +98,11 @@ class BackendTests(unittest.TestCase):
         d = self.client.post('/api/v1/admin/departments', headers=self.ah, json={'name':'New Department'})
         self.assertEqual(d.status_code, 201)
         self.assertEqual(self.client.patch('/api/v1/admin/departments/'+str(d.json()['id']),headers=self.ah,json={'is_active':False}).status_code, 200)
+        managed = self.client.get('/api/v1/admin/departments?is_active=false',headers=self.ah)
+        self.assertEqual(managed.status_code,200,managed.text)
+        self.assertEqual([item['id'] for item in managed.json()],[d.json()['id']])
+        self.assertEqual(self.client.get('/api/v1/admin/departments',headers=self.ch).status_code,403)
+        self.assertNotIn(d.json()['id'],[item['id'] for item in self.client.get('/api/v1/departments').json()])
 
     def test_full_workflow_and_permissions(self):
         c = self.create(self.ch)
@@ -108,8 +118,14 @@ class BackendTests(unittest.TestCase):
         self.assertEqual(self.client.get(base,headers=self.oh).status_code, 200)
         outsider = self.login('outsider@example.com')
         self.assertEqual(self.client.get(base,headers=outsider).status_code, 403)
+        officers = self.client.get('/api/v1/authority/officers',headers=self.oh)
+        self.assertEqual([officer['id'] for officer in officers.json()], [self.client.get('/api/v1/auth/me',headers=self.oh).json()['id']])
+        self.assertEqual(self.client.get('/api/v1/authority/officers?department=2',headers=self.oh).status_code,403)
+        self.assertEqual(self.client.get('/api/v1/authority/officers',headers=self.ch).status_code,403)
         self.assertEqual(self.client.get('/api/v1/authority/complaints',headers=outsider).json(), [])
         self.assertEqual(len(self.client.get('/api/v1/authority/complaints?priority=high&location=Main&department=1',headers=self.oh).json()), 1)
+        officer_id = self.client.get('/api/v1/auth/me',headers=self.oh).json()['id']
+        self.assertEqual(len(self.client.get(f'/api/v1/authority/complaints?area=Main&assigned_officer={officer_id}',headers=self.oh).json()), 1)
         self.assertEqual(self.client.get('/api/v1/authority/dashboard',headers=self.oh).json()['assigned'], 1)
         self.assertEqual(self.client.patch(base+'/assign',headers=self.oh,json={'assigned_department_id':2}).status_code, 403)
         self.assertEqual(self.client.patch(base+'/status',headers=self.oh,json={'status':'resolved'}).status_code, 409)
@@ -127,13 +143,17 @@ class BackendTests(unittest.TestCase):
         self.assertEqual(self.client.post(base+'/resolve',headers=self.oh,json={'resolution_notes':'Repaired again'}).status_code, 200)
         r = self.client.post(verify,headers=self.ch,json={'resolved':False,'feedback':'Still broken'})
         self.assertEqual(r.json()['status'], 'reopened')
-        self.assertEqual(r.json()['verification_status'], 'reopened')
+        self.assertEqual(r.json()['verification_status'], 'rejected')
         self.assertIsNone(r.json()['resolved_at'])
         timeline = f'/api/v1/complaints/{cid}/timeline'
         history = self.client.get(timeline,headers=self.ch).json()
         self.assertEqual(len(history), 9)
         self.assertEqual(history[0]['new_status'], 'submitted')
         self.assertEqual(history[-1]['remarks'], 'Still broken')
+        self.assertEqual(history[-1]['action'], 'citizen_verification')
+        self.assertEqual(history[-1]['verification_status'], 'rejected')
+        self.assertEqual(history[-1]['changed_by_user_id'], self.citizen['id'])
+        self.assertTrue(history[-1]['created_at'])
         self.assertEqual(self.client.get(timeline,headers=other).status_code, 403)
         self.assertEqual(self.client.get(timeline,headers=outsider).status_code, 403)
 
@@ -191,6 +211,15 @@ class BackendTests(unittest.TestCase):
             user.is_active = False
             db.commit()
         self.assertEqual(self.client.get('/api/v1/auth/me',headers=self.ch).status_code, 401)
+
+    def test_self_profile_update_is_limited_to_name_and_phone(self):
+        route = '/api/v1/auth/me'
+        self.assertEqual(self.client.patch(route,json={'full_name':'Updated'}).status_code,401)
+        response = self.client.patch(route,headers=self.ch,json={'full_name':'Updated Citizen','phone':'9000000000'})
+        self.assertEqual(response.status_code,200,response.text)
+        self.assertEqual((response.json()['full_name'],response.json()['phone']),('Updated Citizen','9000000000'))
+        for payload in [{}, {'role':'admin'}, {'department_id':1}, {'full_name':'   '}, {'full_name':None}]:
+            self.assertEqual(self.client.patch(route,headers=self.ch,json=payload).status_code,422)
 
 class DatabaseTests(unittest.TestCase):
     def test_fallback_and_postgres_engine(self):

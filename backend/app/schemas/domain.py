@@ -21,6 +21,10 @@ class Register(EmailInput):
     password: Password
     phone: str | None = Field(default=None, max_length=30)
 
+class ProfilePatch(Input):
+    full_name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)] | None = None
+    phone: str | None = Field(default=None, max_length=30)
+
 class Login(EmailInput):
     password: str = Field(min_length=1, max_length=128)
 
@@ -84,6 +88,13 @@ class HistoryRead(BaseModel):
     changed_by_user_id: int | None
     remarks: str | None
     created_at: datetime
+
+    action: str
+    verification_status: str | None
+    old_department_id: int | None
+    new_department_id: int | None
+    old_officer_id: int | None
+    new_officer_id: int | None
 
 class RemarkRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)

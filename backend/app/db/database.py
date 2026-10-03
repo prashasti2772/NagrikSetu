@@ -5,7 +5,7 @@ import ssl
 
 import certifi
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, text, event
 from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.exc import ArgumentError, SQLAlchemyError
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
@@ -52,11 +52,17 @@ def build_engine(database_url: str) -> Engine:
         )
 
     if url.drivername in {"sqlite", "sqlite+pysqlite"}:
-        return create_engine(
+        sqlite_engine = create_engine(
             url,
             connect_args={"check_same_thread": False},
             hide_parameters=True,
         )
+        @event.listens_for(sqlite_engine, "connect")
+        def enable_foreign_keys(connection, record):
+            cursor = connection.cursor()
+            cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.close()
+        return sqlite_engine
 
     raise ValueError("DATABASE_URL must use SQLite or PostgreSQL with pg8000")
 

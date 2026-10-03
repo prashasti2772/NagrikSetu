@@ -10,7 +10,7 @@ from app.models.complaint import Complaint, ComplaintStatus, utc_now
 from app.models.domain import Department, User, ComplaintRemark, ComplaintStatusHistory, ComplaintEvidence
 from app.schemas.complaint import ComplaintRead, ComplaintStatusUpdate, Severity
 from app.schemas.domain import (DepartmentCreate, DepartmentPatch, DepartmentRead, Assignment, Remark,
-    Resolution, Verification, HistoryRead, RemarkRead)
+    Resolution, Verification, HistoryRead, RemarkRead, UserRead)
 
 router = APIRouter(prefix="/api/v1", tags=["workflow"])
 DB = Annotated[Session, Depends(get_db)]
@@ -40,6 +40,13 @@ def counts(db, condition):
 @router.get("/departments", response_model=list[DepartmentRead])
 def departments(db: DB):
     return db.scalars(select(Department).where(Department.is_active.is_(True)).order_by(Department.id)).all()
+
+@router.get("/admin/departments", response_model=list[DepartmentRead])
+def admin_departments(db: DB, user: Admin, is_active: bool | None = None):
+    query = select(Department)
+    if is_active is not None:
+        query = query.where(Department.is_active == is_active)
+    return db.scalars(query.order_by(Department.id)).all()
 
 @router.post("/admin/departments", response_model=DepartmentRead, status_code=201)
 def create_department(payload: DepartmentCreate, db: DB, user: Admin):
@@ -83,19 +90,34 @@ def authority_dashboard(db: DB, user: Authority):
     result["recent_complaints"] = [ComplaintRead.model_validate(c) for c in recent]
     return result
 
+@router.get("/authority/officers", response_model=list[UserRead])
+def authority_officers(db: DB, user: Authority, department: int | None = Query(None, gt=0),
+                       is_active: bool = True):
+    department_id = department if user.role == "admin" else user.department_id
+    if user.role != "admin" and department_id is None:
+        return []
+    if user.role != "admin" and department is not None and department != user.department_id:
+        raise HTTPException(403, "Officers are limited to your department")
+    query = select(User).where(User.role == "authority", User.is_active == is_active)
+    if department_id is not None:
+        query = query.where(User.department_id == department_id)
+    return db.scalars(query.order_by(User.full_name, User.id)).all()
+
 @router.get("/authority/complaints", response_model=list[ComplaintRead])
 def authority_complaints(db: DB, user: Authority, category: str | None = None,
     priority: Severity | None = None, status: ComplaintStatus | None = None,
     department: int | None = Query(None, gt=0), location: str | None = None,
-    assigned_officer: int | None = Query(None, gt=0), offset: int = Query(0, ge=0), limit: int = Query(20, ge=1, le=100)):
+    area: str | None = None, assigned_officer: int | None = Query(None, gt=0),
+    offset: int = Query(0, ge=0), limit: int = Query(20, ge=1, le=100)):
     query = select(Complaint).where(scope(user))
     for column, value in [(Complaint.category, category), (Complaint.priority, priority),
                           (Complaint.status, status), (Complaint.assigned_department_id, department),
                           (Complaint.assigned_officer_id, assigned_officer)]:
         if value is not None:
             query = query.where(column == value)
-    if location:
-        query = query.where(Complaint.address.icontains(location, autoescape=True))
+    area_or_location = area or location
+    if area_or_location:
+        query = query.where(Complaint.address.icontains(area_or_location, autoescape=True))
     return db.scalars(query.order_by(Complaint.id.desc()).offset(offset).limit(limit)).all()
 
 @router.get("/authority/complaints/{complaint_id}", response_model=ComplaintRead)
@@ -121,6 +143,7 @@ def assign(complaint_id: int, payload: Assignment, db: DB, user: Authority):
     if officer_id and (not officer or not officer.is_active or officer.role != "authority" or officer.department_id != department_id):
         raise HTTPException(422, "Officer must be active authority in the assigned department")
     old = c.status
+    old_assignment = (c.assigned_department_id, c.assigned_officer_id)
     for key, value in data.items():
         setattr(c, key, value)
     c.assigned_department = department.name if department else None
@@ -128,7 +151,7 @@ def assign(complaint_id: int, payload: Assignment, db: DB, user: Authority):
         c.status = ComplaintStatus.assigned
     elif c.status == "assigned":
         c.status = ComplaintStatus.under_review
-    record(db, c, user, old, "Assignment updated", event="complaint_assigned")
+    record(db, c, user, old, "Assignment updated", event="complaint_assigned", old_assignment=old_assignment)
     return save(db, c)
 
 @router.patch("/authority/complaints/{complaint_id}/status", response_model=ComplaintRead)
@@ -142,7 +165,7 @@ def remark(complaint_id: int, payload: Remark, db: DB, user: Authority):
     c = get_complaint(db, complaint_id, user)
     r = ComplaintRemark(complaint_id=c.id, author_user_id=user.id, text=payload.text)
     db.add(r)
-    record(db, c, user, c.status, payload.text)
+    record(db, c, user, c.status, payload.text, action="remark_added")
     return save(db, r)
 
 @router.post("/authority/complaints/{complaint_id}/resolve", response_model=ComplaintRead)
@@ -159,7 +182,7 @@ def resolve(complaint_id: int, payload: Resolution, db: DB, user: Authority):
     if c.evidence_url:
         db.add(ComplaintEvidence(complaint_id=c.id, image_url=c.evidence_url,
                                  evidence_type="resolution", uploaded_by=user.id))
-    record(db, c, user, old, payload.resolution_notes)
+    record(db, c, user, old, payload.resolution_notes, action="resolution_submitted")
     return save(db, c)
 
 @router.post("/authority/complaints/{complaint_id}/reopen", response_model=ComplaintRead)
@@ -171,7 +194,7 @@ def reopen(complaint_id: int, db: DB, user: Authority):
     c.status = ComplaintStatus.reopened
     c.verification_status = "reopened"
     c.resolved_at = None
-    record(db, c, user, old, "Reopened by authority")
+    record(db, c, user, old, "Reopened by authority", action="complaint_reopened")
     return save(db, c)
 
 @router.post("/complaints/{complaint_id}/verify", response_model=ComplaintRead)
@@ -181,10 +204,10 @@ def verify_complaint(complaint_id: int, payload: Verification, db: DB, user: Cit
         raise HTTPException(409, "Complaint is not awaiting verification")
     old = c.status
     c.status = ComplaintStatus.resolved if payload.resolved else ComplaintStatus.reopened
-    c.verification_status = "approved" if payload.resolved else "reopened"
+    c.verification_status = "approved" if payload.resolved else "rejected"
     if not payload.resolved:
         c.resolved_at = None
-    record(db, c, user, old, payload.feedback)
+    record(db, c, user, old, payload.feedback, action="citizen_verification")
     return save(db, c)
 
 @router.get("/complaints/{complaint_id}/timeline", response_model=list[HistoryRead])

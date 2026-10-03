@@ -13,7 +13,7 @@ from app.core.otp import get_otp_delivery
 from app.db.database import get_db
 from app.models.complaint import utc_now
 from app.models.domain import User, PasswordOTP
-from app.schemas.domain import Register, Login, EmailInput, OTPVerify, Reset, UserRead
+from app.schemas.domain import Register, Login, EmailInput, OTPVerify, Reset, ProfilePatch, UserRead
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
@@ -42,6 +42,19 @@ def login(payload: Login, db: Session = Depends(get_db)):
 
 @router.get("/me", response_model=UserRead)
 def me(user = Depends(get_current_user)):
+    return user
+
+@router.patch("/me", response_model=UserRead)
+def update_me(payload: ProfilePatch, db: Session = Depends(get_db), user = Depends(get_current_user)):
+    changes = payload.model_dump(exclude_unset=True)
+    if not changes:
+        raise HTTPException(422, "Provide at least one profile field")
+    if "full_name" in changes and changes["full_name"] is None:
+        raise HTTPException(422, "Full name cannot be null")
+    for field, value in changes.items():
+        setattr(user, field, value)
+    db.commit()
+    db.refresh(user)
     return user
 
 @router.post("/forgot-password", dependencies=[Depends(rate_limit("forgot-password", settings.rate_limit_forgot))])

@@ -1,10 +1,11 @@
 from datetime import date, datetime, time, timedelta
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, func
 from app.routers.workflow import DB, Authority, counts
 from app.core.workflow import scope
 from app.models.complaint import Complaint
 from app.models.domain import Department
+from app.schemas.complaint import ComplaintRead
 
 router = APIRouter(prefix="/api/v1/authority/analytics", tags=["analytics"])
 
@@ -49,6 +50,18 @@ def departments(db: DB, user: Authority, dates = Depends(date_range)):
         Department, Complaint.assigned_department_id == Department.id).where(scope(user), *dates)
         .group_by(Complaint.assigned_department_id, Department.name).order_by(Complaint.assigned_department_id))
     return [{"department_id": did, "department": name or "Unassigned", "total": total} for did, name, total in rows]
+
+@router.get("/priorities")
+def priorities(db: DB, user: Authority, dates = Depends(date_range)):
+    rows = db.execute(select(Complaint.priority, func.count()).where(scope(user), *dates)
+                      .group_by(Complaint.priority).order_by(Complaint.priority))
+    return [{"priority": priority, "total": total} for priority, total in rows]
+
+@router.get("/recent")
+def recent(db: DB, user: Authority, dates = Depends(date_range), limit: int = Query(10, ge=1, le=100)):
+    rows = db.scalars(select(Complaint).where(scope(user), *dates)
+                      .order_by(Complaint.created_at.desc(), Complaint.id.desc()).limit(limit)).all()
+    return [ComplaintRead.model_validate(complaint) for complaint in rows]
 
 @router.get("/trends")
 def trends(db: DB, user: Authority, dates = Depends(date_range)):

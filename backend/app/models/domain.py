@@ -49,6 +49,13 @@ class ComplaintStatusHistory(Base):
     remarks: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
+    action: Mapped[str] = mapped_column(String(50), default="status_changed", server_default="legacy")
+    verification_status: Mapped[str | None] = mapped_column(String(20))
+    old_department_id: Mapped[int | None] = mapped_column(ForeignKey("departments.id"))
+    new_department_id: Mapped[int | None] = mapped_column(ForeignKey("departments.id"))
+    old_officer_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    new_officer_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+
 class ComplaintRemark(Base):
     __tablename__ = "complaint_remarks"
     id: Mapped[int] = mapped_column(primary_key=True)

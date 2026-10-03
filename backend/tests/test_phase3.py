@@ -97,9 +97,11 @@ class Phase3Tests(unittest.TestCase):
         self.assertIsNone(dated['average_resolution_hours'])
         self.assertEqual(self.client.get(root+'categories',headers=self.ah).json(),[{'category':'Roads','total':3}])
         self.assertEqual([d['total'] for d in self.client.get(root+'departments',headers=self.ah).json()],[2,1])
+        self.assertEqual([p['total'] for p in self.client.get(root+'priorities',headers=self.ah).json()],[3])
+        self.assertEqual(len(self.client.get(root+'recent?date_from=2026-01-01&date_to=2026-01-02',headers=self.ah).json()),2)
         trends = self.client.get(root+'trends',headers=self.oh).json()
         self.assertEqual(trends,[{'date':'2026-01-01','total':1},{'date':'2026-01-02','total':1}])
-        for suffix in ['summary','categories','departments','trends']:
+        for suffix in ['summary','categories','departments','priorities','recent','trends']:
             self.assertEqual(self.client.get(root+suffix,headers=self.ch).status_code,403)
             self.assertEqual(self.client.get(root+suffix+'?date_from=2026-02-02&date_to=2026-01-01',headers=self.ah).status_code,422)
 
@@ -137,7 +139,8 @@ class Phase3Tests(unittest.TestCase):
         self.assertEqual(r.json()['suggested_category'],'Roads & Infrastructure')
         self.assertEqual(r.json()['suggested_priority'],'high')
         self.assertEqual(r.json()['recommended_department']['name'],'Roads & Infrastructure')
-        self.assertEqual(r.json()['possible_duplicates'],[{'complaint_id':c['id'],'similarity':1.0}])
+        self.assertEqual(r.json()['possible_duplicates'],[{'complaint_id':c['id'],'similarity':1.0,
+            'reason':'Similar title/description; locations within 0.00 km'}])
         other = self.login('other@example.com')
         self.assertEqual(self.client.post(route,headers=other,json=analysis).json()['possible_duplicates'],[])
         self.assertEqual(self.client.post(route,headers=self.ch,json={**analysis,'latitude':999}).status_code,422)
@@ -154,7 +157,8 @@ class Phase3Tests(unittest.TestCase):
         route = f"/api/v1/authority/complaints/{c1['id']}/duplicates"
         self.assertEqual(self.client.get(route,headers=self.ch).status_code,403)
         duplicates = self.client.get(route,headers=self.oh).json()['possible_duplicates']
-        self.assertEqual(duplicates,[{'complaint_id':c2['id'],'similarity':1.0}])
+        self.assertEqual(duplicates,[{'complaint_id':c2['id'],'similarity':1.0,
+            'reason':'Similar title/description; same category; locations within 0.00 km'}])
         outsider = self.login('outsider@example.com')
         self.assertEqual(self.client.get(route,headers=outsider).status_code,403)
         with SessionLocal() as db:
@@ -219,7 +223,7 @@ class MigrationTests(unittest.TestCase):
             e=build_engine('sqlite:///'+folder+'/fresh.db')
             initialize_database(e)
             with e.connect() as c:
-                self.assertEqual(c.scalar(text('SELECT version_num FROM alembic_version')),'0002_phase3')
+                self.assertEqual(c.scalar(text('SELECT version_num FROM alembic_version')),'0003_workflow_audit')
                 self.assertEqual(compare_metadata(MigrationContext.configure(c),Base.metadata),[])
             cfg=migration_config()
             with e.begin() as c:
@@ -237,6 +241,16 @@ class MigrationTests(unittest.TestCase):
             for table in tables:
                 table.to_metadata(snapshot)
             snapshot.tables['complaints'].c.resolved_at.type = TIMESTAMP()
+            # Freeze the legacy fixture rather than including later model additions.
+            history = snapshot.tables['complaint_status_history']
+            for name in ['action', 'verification_status', 'old_department_id', 'new_department_id', 'old_officer_id', 'new_officer_id']:
+                column = history.c[name]
+                for fk in list(column.foreign_keys):
+                    history.constraints.discard(fk.constraint)
+                    history.foreign_keys.discard(fk)
+                history._columns.remove(column)
+            for index in list(snapshot.tables['complaints'].indexes):
+                snapshot.tables['complaints'].indexes.remove(index)
             snapshot.create_all(e)
             with e.begin() as c:
                 c.execute(text("INSERT INTO departments (id,name,is_active) VALUES (50,'Existing department',1)"))

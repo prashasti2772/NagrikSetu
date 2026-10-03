@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, HttpUrl, UrlConstraints
 from app.schemas.domain import EmailInput, Input, Password
-from app.schemas.complaint import Title, Description
+from app.schemas.complaint import Title, Description, ShortText, Address, Severity
 
 class AuthorityCreate(EmailInput):
     full_name: Title
@@ -30,8 +30,35 @@ class NotificationRead(BaseModel):
 class AnalyzeComplaint(Input):
     title: Title
     description: Description
+    category: ShortText | None = None
+    address: Address | None = None
     latitude: float | None = Field(default=None, ge=-90, le=90, allow_inf_nan=False)
     longitude: float | None = Field(default=None, ge=-180, le=180, allow_inf_nan=False)
+
+class DepartmentSuggestion(BaseModel):
+    id: int
+    name: str
+
+class PossibleDuplicate(BaseModel):
+    complaint_id: int
+    similarity: float = Field(ge=0, le=1)
+    reason: str
+
+class ComplaintAnalysis(BaseModel):
+    suggested_category: str
+    confidence: float = Field(ge=0, le=1)
+    category_keywords: list[str]
+    confidence_method: str
+    suggested_priority: Severity
+    priority_signals: list[str]
+    priority_reason: str
+    suggested_department: DepartmentSuggestion | None
+    recommended_department: DepartmentSuggestion | None
+    possible_duplicates: list[PossibleDuplicate]
+    duplicate_similarity_method: str
+    reasons: dict[str, str]
+    model_version: str
+    limitations: str
 
 class EvidenceCreate(Input):
     image_url: Annotated[HttpUrl, UrlConstraints(max_length=2048)]

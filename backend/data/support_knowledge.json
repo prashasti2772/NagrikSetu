@@ -1,0 +1,131 @@
+[
+  {
+    "topic": "reporting",
+    "phrases": [
+      "report an issue",
+      "report issue",
+      "submit complaint",
+      "create complaint",
+      "report a problem",
+      "file a complaint",
+      "reporting"
+    ],
+    "answer": "Sign in as a citizen and open Report Issue. Enter a title, description, category, location coordinates and address; you may include an image URL. Review any suggested category or priority, then submit. Your selected values remain authoritative.",
+    "suggestions": [
+      "Which categories are available?",
+      "How do I track a complaint?"
+    ]
+  },
+  {
+    "topic": "tracking",
+    "phrases": [
+      "track",
+      "tracking",
+      "find complaint",
+      "where is my complaint",
+      "complaint number"
+    ],
+    "answer": "Sign in and open My Complaints or your citizen dashboard. Select your complaint to see its status, assignment and timeline. To check a specific complaint here, send its ID in complaint_id or write \"status of complaint #123\".",
+    "suggestions": [
+      "What do complaint statuses mean?",
+      "How does resolution verification work?"
+    ]
+  },
+  {
+    "topic": "statuses",
+    "phrases": [
+      "statuses",
+      "status meaning",
+      "status mean",
+      "under review",
+      "in progress",
+      "submitted",
+      "verification pending",
+      "assigned status"
+    ],
+    "answer": "submitted: received; under_review: being assessed; assigned: routed to a department or officer; in_progress: work underway; verification_pending: staff submitted a resolution for the citizen to check; resolved: the citizen confirmed resolution; reopened: further work is needed.",
+    "suggestions": [
+      "How does resolution verification work?",
+      "How do I reopen an unresolved complaint?"
+    ]
+  },
+  {
+    "topic": "categories",
+    "phrases": [
+      "category",
+      "categories",
+      "department list",
+      "types of issues"
+    ],
+    "answer": "Choose the category that best matches the issue. Local text analysis can suggest a category and department, but it does not decide or overwrite your selection.",
+    "suggestions": [
+      "How do I report an issue?",
+      "How are complaints assigned?"
+    ]
+  },
+  {
+    "topic": "verification",
+    "phrases": [
+      "verify",
+      "verification",
+      "confirm resolution",
+      "accept resolution",
+      "resolved complaint",
+      "resolution confirmation"
+    ],
+    "answer": "When staff submit a resolution, the complaint becomes verification_pending. The owning citizen checks the work and submits resolved=true to confirm, or resolved=false with optional feedback if it is still unresolved. Confirmation sets resolved and approved; rejection sets reopened and rejected.",
+    "suggestions": [
+      "How do I reopen an unresolved complaint?",
+      "How do I track a complaint?"
+    ]
+  },
+  {
+    "topic": "reopening",
+    "phrases": [
+      "reopen",
+      "reopening",
+      "unresolved",
+      "still broken",
+      "not fixed",
+      "reject resolution"
+    ],
+    "answer": "If your complaint is verification_pending and the issue is not fixed, reject the resolution with resolved=false and optional feedback; it will reopen. If you already confirmed it as resolved, authorized staff can reopen it. This chat provides guidance and does not change complaint status.",
+    "suggestions": [
+      "How does resolution verification work?",
+      "What do complaint statuses mean?"
+    ]
+  },
+  {
+    "topic": "assignment",
+    "phrases": [
+      "assign",
+      "assignment",
+      "assigned officer",
+      "routing",
+      "officer workflow",
+      "assigned"
+    ],
+    "answer": "Admins route complaints to departments and active officers. Authorities work within their department or explicit assignments and can assign a compatible officer. Only admins transfer complaints between departments. Staff submit resolution evidence for citizen verification.",
+    "suggestions": [
+      "What do complaint statuses mean?",
+      "How does resolution verification work?"
+    ]
+  },
+  {
+    "topic": "account",
+    "phrases": [
+      "forgot password",
+      "reset password",
+      "otp",
+      "login",
+      "sign in",
+      "register",
+      "sign up"
+    ],
+    "answer": "Register with your name, email and password to create a citizen account, then sign in. Staff accounts are created by an admin. Password recovery uses a single-use expiring OTP; in local development it is delivered to the backend terminal, not in the API response.",
+    "suggestions": [
+      "How do I report an issue?",
+      "How do I track a complaint?"
+    ]
+  }
+]

@@ -4,9 +4,25 @@ import os
 import secrets
 from dataclasses import dataclass, field
 from pathlib import Path
+from dotenv.parser import parse_stream
 
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
+
+
+def gemini_dotenv_values():
+    values = {}
+    try:
+        with (BACKEND_DIR / ".env").open(encoding="utf-8") as environment_file:
+            for binding in parse_stream(environment_file):
+                if binding.key in {"GEMINI_API_KEY", "GEMINI_MODEL"}:
+                    values[binding.key] = binding.value or ""
+    except OSError:
+        pass
+    return values
+
+
+_GEMINI_DOTENV = gemini_dotenv_values()
 
 
 @dataclass(frozen=True)
@@ -30,6 +46,8 @@ class Settings:
     rate_limit_forgot: int = field(default_factory=lambda: int(os.getenv("RATE_LIMIT_FORGOT", "5")))
     rate_limit_verify: int = field(default_factory=lambda: int(os.getenv("RATE_LIMIT_VERIFY", "10")))
     rate_limit_intelligence: int = field(default_factory=lambda: int(os.getenv("RATE_LIMIT_INTELLIGENCE", "20")))
+    gemini_api_key: str = field(default_factory=lambda: os.getenv("GEMINI_API_KEY", _GEMINI_DOTENV.get("GEMINI_API_KEY", "")).strip(), repr=False)
+    gemini_model: str = field(default_factory=lambda: os.getenv("GEMINI_MODEL", _GEMINI_DOTENV.get("GEMINI_MODEL", "")).strip() or "gemini-2.5-flash")
     cors_origins: list[str] = field(default_factory=lambda: [
         origin.strip()
         for origin in os.getenv(

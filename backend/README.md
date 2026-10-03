@@ -1,5 +1,23 @@
 # NagrikSetu backend
 
+Backend for citizen civic issue reporting, intelligent routing, transparent
+tracking, and community-verified resolution. Local text suggestions and a local
+help chatbot support the workflow; users and staff make the decisions.
+
+The current development/validation target is SQLite. Supabase TLS troubleshooting
+and production deployment are deferred. The PostgreSQL configuration reference
+below documents existing behavior, not a verified live deployment.
+The last observed Windows Supabase attempt failed with TLS certificate verification
+error 92 after loading the downloaded CA. That external connection remains unverified;
+no certificate or hostname verification bypass is used. SQLite development can continue.
+
+The complete [frontend API contract](API_CONTRACT.md) includes authentication,
+roles, concrete request examples, response shapes, errors, and all frontend routes.
+The [frontend handoff](FRONTEND_HANDOFF.md) provides the React setup checklist.
+Use `VITE_API_BASE_URL=http://127.0.0.1:8000` with its full `/api/v1/...` paths.
+Backend `CORS_ORIGINS` remains configurable and defaults to both
+`http://localhost:5173` and `http://127.0.0.1:5173`.
+
 ## Install and run (PowerShell)
 
 From the repository root:
@@ -80,9 +98,10 @@ backend after changing the CA setting. Never download/trust a certificate from a
 unverified failing TLS connection. See [Supabase's verified TLS instructions](https://supabase.com/docs/guides/platform/ssl-enforcement).
 
 Switching the URL selects a different database; it does not migrate SQLite data.
-Existing automatic table creation remains in place at startup. A configured but
-unreachable PostgreSQL database fails startup; it does not silently fall back to
-SQLite. SQLite fallback applies only when the URL is missing or blank.
+Startup applies Alembic migrations and seeds reference departments in the selected
+database. A configured but unreachable PostgreSQL database fails startup; it does
+not silently fall back to SQLite. SQLite fallback applies only when the URL is
+missing or blank.
 
 ## Authentication and recovery
 
@@ -113,6 +132,7 @@ rate limiter for deployment-wide login and recovery abuse protection.
 
 - `/api/v1/auth/register`, `/login`, `/me`, `/forgot-password`, `/verify-otp`, `/reset-password`
   (all suffixes in this line are under `/api/v1/auth`).
+- `PATCH /api/v1/auth/me` updates only the current user's full name and phone.
 - GET `/api/v1/departments`; admin POST `/api/v1/admin/departments` and PATCH `/{id}`.
 - GET `/api/v1/users/me/complaints` and `/api/v1/users/me/dashboard`.
 - GET `/api/v1/authority/dashboard`, `/complaints`, `/complaints/{id}` (under the authority prefix).
@@ -131,14 +151,16 @@ Dashboards return individual status counts and total; citizen dashboard also inc
 Resolve accepts `resolution_notes` and optional HTTP(S) `evidence_url` and sets
 `verification_pending`. Only the owning citizen can verify with `resolved` and
 optional `feedback`: acceptance sets `resolved`/`approved`, rejection sets
-`reopened`/`reopened`. Status changes, assignment, remarks and verification persist
-in the timeline. Direct status updates cannot bypass verification.
+`reopened`/`rejected`. Status changes, assignment, remarks and verification persist
+in the timeline, including the actor, action, feedback, time, verification state,
+and old/new department and officer IDs. Direct status updates cannot bypass verification.
+The verification queue uses `/api/v1/authority/complaints?status=verification_pending`.
 
-Public complaint creation/list/detail remain available for compatibility. Authenticated
-creation attaches the citizen owner. Anonymous reports remain ownerless and cannot
-be citizen-verified. The legacy PATCH complaint status endpoint now requires scoped
-authority/admin access. Public complaint responses continue to expose complaint
-information; assess redaction before a public production deployment.
+Complaint creation requires a citizen login and attaches the authenticated owner.
+Listing and detail require authentication: citizens see their own reports, authorities
+see department/officer-scoped reports, and admins see all. Legacy anonymous reports
+remain preserved and cannot be citizen-verified. The compatibility PATCH complaint
+status endpoint requires scoped authority/admin access.
 
 Provision staff through the local operator CLI (password is prompted, never an argument):
 
@@ -147,8 +169,24 @@ Provision staff through the local operator CLI (password is prompted, never an a
 .\.venv\Scripts\python.exe -m app.create_staff --email officer@example.com --full-name "Local Officer" --role authority --department-id 1
 ```
 
-No default admin or authority accounts are created. Tests create staff only inside
-an isolated temporary database.
+No default admin or authority accounts are created at startup. To explicitly add
+local demonstration accounts and three clearly labeled sample reports:
+
+```powershell
+$env:APP_ENV = 'development'
+Remove-Item Env:DATABASE_URL -ErrorAction SilentlyContinue
+.\.venv\Scripts\python.exe -m app.seed_dev --yes
+```
+
+The command prompts for a 10-128 character password and confirmation without echo.
+An optional process variable `SEED_DEMO_PASSWORD` can supply it for automation; never
+commit it. The script refuses non-development environments and PostgreSQL. It creates
+`demo.admin@example.com`, `demo.citizen@example.com`, and authority accounts
+`demo.roads@example.com`, `demo.sanitation@example.com`, `demo.water@example.com`.
+All new accounts use the supplied password. Re-running preserves existing passwords
+and sample progress; conflicting reserved identities cause an error without replacement.
+Sample reports are assigned to the corresponding officers with persisted timelines,
+suggestions and notifications. Tests seed only temporary SQLite databases.
 
 ## Schema upgrades and checks
 
@@ -157,6 +195,10 @@ Revision `0001_phase2` freezes the original Phase 2 schema and safely adopts exi
 Phase 2 tables. It also adds the known missing Phase 1 complaint columns and preserves
 all existing rows. Revision `0002_phase3` adds notifications, evidence metadata and
 separate complaint suggestions. No migration imports mutable application models.
+Revision `0003_workflow_audit` extends the existing timeline with action,
+verification state and assignment history fields, and adds complaint query indexes.
+Existing history is retained with action `legacy`; missing historical assignments
+are not invented. SQLite connections enable foreign key enforcement.
 Run schema upgrades once before starting multiple application workers. Existing string
 `assigned_department` values remain intact; admins assign department IDs to route them.
 
@@ -228,12 +270,14 @@ All paths below start with `/api/v1`:
 | GET | `/authority/analytics/summary` | Scoped status counts and average resolution hours |
 | GET | `/authority/analytics/categories` | Scoped category counts |
 | GET | `/authority/analytics/departments` | Scoped department counts, including unassigned |
+| GET | `/authority/analytics/priorities`, `/authority/analytics/recent` | Priority counts and recent persisted reports |
 | GET | `/authority/analytics/trends` | Scoped daily complaint creation counts |
 | GET | `/notifications` | Own notifications, optionally filtered by is_read |
 | PATCH | `/notifications/{id}/read`, `/notifications/read-all` | Mark own notifications read |
 | POST | `/intelligence/analyze-complaint` | Authenticated, local text suggestions |
 | GET | `/authority/complaints/{id}/duplicates` | Scoped staff duplicate candidates |
 | GET, POST | `/complaints/{id}/evidence` | Owner/scoped staff evidence metadata |
+| POST | `/chatbot/message` | Public help; authenticated and scoped complaint status |
 
 User filters: `role`, `department` (ID), `is_active`, `search` (name/email/employee ID).
 User/officer/notification lists use `offset` and `limit` (maximum 100). Officer listing
@@ -260,41 +304,58 @@ cannot log in to retrieve them. There is no external push/email transport.
 
 Evidence is URL metadata only: image_url, evidence_type (`report`, `resolution`,
 `supporting`), uploaded_at (server UTC), uploaded_by (authenticated user or null for
-anonymous creation). Existing complaint image and resolution URLs are recorded on new
+legacy records). Existing complaint image and resolution URLs are recorded on new
 submissions/resolutions. Old URLs remain preserved on complaints; historical uploader
 and upload timestamps are not invented. No URL is fetched, and no binary file is stored.
 Cloudinary or Supabase Storage can later supply URLs via a storage adapter.
 
 ## Local complaint intelligence
 
-No paid service, API key, model download or network call is used. scikit-learn fits
-TF-IDF vectors to the synthetic examples in `data/category_examples.json`. Category
-centroid cosine similarity supplies a suggestion, supporting keywords and an uncalibrated
-confidence score. This is an English prototype with no claimed production accuracy.
+The category classifier and priority rules use local pure-Python code and the supplied
+examples. Optional Gemini chatbot/image assistance uses `GEMINI_API_KEY` only when
+configured; local FAQ, text suggestions, and fallback behavior require no API key.
+TF-IDF category centroid cosine similarity supplies a suggestion, supporting keywords,
+and an uncalibrated confidence score. This is an English prototype with no claimed
+production accuracy.
 Priority is a transparent ordered phrase heuristic: critical, high, low signals,
 otherwise medium. It does not guarantee emergency detection or understand negation.
 
-Analysis accepts title, description and optional latitude/longitude; coordinates are
-validated and reserved for future geographic scoring. Response fields include
-suggested_category, confidence, category_keywords, suggested_priority, priority_signals,
-recommended_department (ID/name or null), possible_duplicates (IDs/similarity),
-model_version and limitations. For analysis, department follows the predicted category.
+Analysis accepts title, description and optional category, address, latitude/longitude.
+Coordinates are validated; complete pairs support geographic duplicate filtering.
+Response fields include suggested_category, confidence, category_keywords,
+confidence_method, suggested_priority, priority_signals, priority_reason,
+suggested_department (ID/name or null; recommended_department is a compatibility alias),
+possible_duplicates (IDs/similarity/reason), duplicate_similarity_method, model_version
+and limitations. Department follows a supplied category, or the inferred category.
 On creation, suggestions are stored separately in `complaint_suggestions`; department
 recommendation follows the user-selected category. User category, severity, priority,
 assignment and workflow are never overwritten by intelligence.
 
 Duplicates use TF-IDF/cosine against at most `DUPLICATE_CANDIDATE_LIMIT` recent scoped
 reports within `DUPLICATE_LOOKBACK_DAYS`, filtered by `DUPLICATE_THRESHOLD`; at most ten
-matches are returned. Citizens compare only their own complaints. Authorities compare
+matches are returned. Category/address disagreements reduce scores; complete coordinate
+pairs over 2 km apart are excluded. Missing coordinates do not imply zero distance.
+Citizens compare only their own complaints. Authorities compare
 permitted complaints, and admins can compare all. The source complaint is excluded from
 its duplicate list. No automatic merge/delete occurs. Corpus/version details and
 limitations are documented in `data/README.md`.
+
+## Local Help & Support chatbot
+
+`POST /api/v1/chatbot/message` uses local rules and `data/support_knowledge.json`
+for reporting, tracking, categories, verification, reopening, assignment and account
+help. Public FAQ answers need no login. Complaint-specific answers require a bearer
+token and an explicit complaint ID, and follow the same owner/staff scope as the API.
+Missing and unauthorized complaints both return 404. Responses contain an answer,
+topic, suggested prompts and an optional minimal complaint status snapshot.
+The chatbot never changes records or sends data to an external model.
 
 ## Prototype request limits
 
 The Python standard-library sliding-window limiter is thread-safe and bounded to
 10,000 active peer/endpoint keys. Defaults per 60 seconds: login 10, registration 5,
-forgot-password 5, OTP verification 10, reset-password 10, intelligence 20. Configure
+forgot-password 5, OTP verification 10, reset-password 10, intelligence 20, chatbot 20.
+Chatbot and intelligence have separate counters sharing the same configurable limit. Configure
 limits through `.env.example` variables in the process environment. Rejected requests
 return 429 plus Retry-After; expired windows recover automatically. Counts are per
 endpoint and direct peer IP, including failed requests. Raw forwarding headers are

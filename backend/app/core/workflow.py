@@ -24,9 +24,15 @@ def permitted(complaint, user):
         return
     raise HTTPException(403, "Complaint access denied")
 
-def record(db, complaint, user, old_status, remarks=None, event=None):
+def record(db, complaint, user, old_status, remarks=None, event=None, *, action=None, old_assignment=None):
+    if action is None:
+        action = event or ("complaint_submitted" if old_status is None else "status_changed")
+    previous_department, previous_officer = old_assignment or (None, None)
     db.add(ComplaintStatusHistory(complaint_id=complaint.id, old_status=old_status,
-        new_status=complaint.status, changed_by_user_id=user.id if user else None, remarks=remarks))
+        new_status=complaint.status, changed_by_user_id=user.id if user else None, remarks=remarks,
+        action=action, verification_status=complaint.verification_status,
+        old_department_id=previous_department, old_officer_id=previous_officer,
+        new_department_id=complaint.assigned_department_id, new_officer_id=complaint.assigned_officer_id))
     complaint.updated_at = utc_now()
     workflow_notifications(db, complaint, old_status, event)
 
