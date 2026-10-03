@@ -1,6 +1,6 @@
 from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from app.db.database import get_db
@@ -115,9 +115,13 @@ def authority_complaints(db: DB, user: Authority, category: str | None = None,
                           (Complaint.assigned_officer_id, assigned_officer)]:
         if value is not None:
             query = query.where(column == value)
-    area_or_location = area or location
-    if area_or_location:
-        query = query.where(Complaint.address.icontains(area_or_location, autoescape=True))
+    if area:
+        query = query.where(or_(Complaint.area.icontains(area, autoescape=True),
+                                Complaint.locality.icontains(area, autoescape=True),
+                                Complaint.ward.icontains(area, autoescape=True),
+                                Complaint.address.icontains(area, autoescape=True)))
+    elif location:
+        query = query.where(Complaint.address.icontains(location, autoescape=True))
     return db.scalars(query.order_by(Complaint.id.desc()).offset(offset).limit(limit)).all()
 
 @router.get("/authority/complaints/{complaint_id}", response_model=ComplaintRead)
@@ -180,8 +184,11 @@ def resolve(complaint_id: int, payload: Resolution, db: DB, user: Authority):
     c.evidence_url = str(payload.evidence_url) if payload.evidence_url else None
     c.resolved_at = utc_now()
     if c.evidence_url:
-        db.add(ComplaintEvidence(complaint_id=c.id, image_url=c.evidence_url,
-                                 evidence_type="resolution", uploaded_by=user.id))
+        evidence = ComplaintEvidence(complaint_id=c.id, image_url=c.evidence_url,
+                                     evidence_type="resolution", uploaded_by=user.id)
+        db.add(evidence)
+        from app.services.incidents import share_resolution_evidence
+        share_resolution_evidence(db, evidence)
     record(db, c, user, old, payload.resolution_notes, action="resolution_submitted")
     return save(db, c)
 

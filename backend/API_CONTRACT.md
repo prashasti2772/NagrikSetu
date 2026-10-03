@@ -36,10 +36,11 @@ schemas can serialize UTC without an offset. Treat these unmarked timestamps as 
 ### Shared response objects
 
 - **User**: `id`, `full_name`, `email`, `phone`, `role`, `is_active`, `employee_id`,
-  `designation`, `department_id`, `created_at`, `updated_at`. Staff fields may be
+    `email_verified`, `designation`, `department_id`, `created_at`, `updated_at`. Staff fields may be
   null. No password/hash or signing secret is returned.
 - **Complaint**: `id`, `title`, `description`, `category`, `severity`, `priority`,
-  `latitude`, `longitude`, `address`, `image_url`, `status`, `citizen_id`,
+    `latitude`, `longitude`, `address`, `location_accuracy_m`, `locality`, `area`, `ward`,
+    `image_url`, `status`, `citizen_id`, `incident_id`,
   `assigned_department` (legacy name), `assigned_department_id`,
   `assigned_officer_id`, `resolution_notes`, `evidence_url`, `resolved_at`,
   `verification_status`, `created_at`, `updated_at`. Ownership, assignment,
@@ -55,7 +56,11 @@ schemas can serialize UTC without an offset. Treat these unmarked timestamps as 
   actor and timestamp. Older migrated rows have action `legacy` and no invented
   assignment/verification snapshots.
 - **Evidence**: `id`, `complaint_id`, `image_url`, `evidence_type`, `uploaded_at`,
-  `uploaded_by` (nullable for legacy records).
+    `uploaded_by` (nullable for legacy records), `content_type`, `size_bytes`. Private
+    storage object paths and bucket names are never returned.
+- **Incident**: shared workflow status/assignment/resolution plus aggregate
+    `report_count`, distinct `reporting_citizens`, `approvals`, and `rejections`.
+    Complaint reports remain separate records.
 - **Notification**: `id`, `user_id`, `title`, `message`, `type`, `is_read`,
   `complaint_id` (nullable), `created_at`.
 
@@ -82,32 +87,35 @@ Interactive reference: `GET /docs`. Machine-readable schema: `GET /openapi.json`
 
 | Method | Endpoint | Auth required / allowed role | Request body example | Important response fields | Typical errors |
 | --- | --- | --- | --- | --- | --- |
-| POST | `/api/v1/auth/register` | No / public; creates citizen | `{"full_name":"Asha Rao","email":"asha@example.com","password":"ExampleOnly!482","phone":"9000000000"}` | 201, User | 409 email exists; 422 invalid fields; 429 |
+| POST | `/api/v1/auth/register` | No / public; creates citizen | `{"full_name":"Asha Rao","email":"asha@example.com","password":"ExampleOnly!482","phone":"9000000000"}` | 201, User; sends a purpose-scoped verification OTP when Brevo is configured | 409 email exists; 422 invalid fields; 429 |
 | POST | `/api/v1/auth/login` | No / any active account | `{"email":"asha@example.com","password":"ExampleOnly!482"}` | `access_token`, `token_type` (`bearer`) | 401 invalid credentials/inactive account; 422; 429 |
 | GET | `/api/v1/auth/me` | Yes / citizen, authority, admin | No body | Current User | 401 |
 | PATCH | `/api/v1/auth/me` | Yes / citizen, authority, admin | `{"full_name":"Asha Rao","phone":"9000000000"}`; either field may be omitted, `phone` may be null | Updated User; only `full_name` and `phone` are editable | 401; 422 empty/invalid/unsupported fields |
 | POST | `/api/v1/auth/forgot-password` | No / public | `{"email":"asha@example.com"}` | Generic `message` regardless of account eligibility | 422; 429; 503 email delivery unavailable outside development |
 | POST | `/api/v1/auth/verify-otp` | No / public | `{"email":"asha@example.com","otp":"123456"}` | `reset_token` | 400 invalid/expired/used code; 422; 429 |
 | POST | `/api/v1/auth/reset-password` | No / valid reset token required | `{"reset_token":"replace-with-returned-reset-token","new_password":"ExampleOnly!927"}` | `{"message":"Password updated"}` | 400 invalid/expired/used reset token; 422; 429 |
+| POST | `/api/v1/auth/request-email-verification` | Yes / citizen, authority, admin | No body; current account only | Generic `message`; code sent via Brevo if configured | 401; 429; 503 |
+| POST | `/api/v1/auth/verify-email` | Yes / citizen, authority, admin | `{"otp":"123456"}` | `email_verified: true` | 400 invalid/expired/used code; 401; 422; 429 |
 
 Registration/reset passwords need 10-128 characters. Registration accepts only
 `full_name`, `email`, `password`, and optional `phone`; `role` is rejected. Emails
 are normalized to lowercase. All roles share login; `/auth/me` identifies the role.
 
 OTP codes contain six digits, expire by default after ten minutes, allow five
-verification attempts, and can be verified once. Issuance has a 60-second account
-cooldown. Local development prints the code in the backend terminal; API responses
-never contain it. External email delivery is not implemented; forgot-password
-returns 503 outside development until an email delivery adapter is configured. Password reset
-invalidates existing access tokens; log in again. There is no refresh-token API or
-forced first-login password-change flow yet.
+verification attempts, and can be verified once. Issuance has a 60-second per-email,
+per-purpose cooldown. Brevo REST delivery is optional; registration sends an email
+verification OTP when configured. Without Brevo, local development does not send or
+log OTP codes; tests inject a fake delivery. OTP values never appear in API responses
+or logs. Outside development, security email actions return 503 until Brevo settings
+are configured. Password reset invalidates existing access tokens; log in again.
+There is no refresh-token API or forced first-login password-change flow yet.
 
 ## CITIZEN
 
 | Method | Endpoint | Auth required / allowed role | Request body example | Important response fields | Typical errors |
 | --- | --- | --- | --- | --- | --- |
 | GET | `/api/v1/departments` | No / public | No body | Array of active Department objects | None expected |
-| POST | `/api/v1/complaints` | Yes / citizen | `{"title":"Pothole near the bus stop","description":"A deep pothole is damaging vehicles near the main bus stop.","category":"Roads & Infrastructure","severity":"medium","latitude":19.076,"longitude":72.8777,"address":"Main Road bus stop","image_url":"https://example.com/report.jpg"}` | 201, Complaint; owner from token, initially `submitted` | 401; 403 wrong role; 422 |
+| POST | `/api/v1/complaints` | Yes / citizen | `{"title":"Pothole near the bus stop","description":"A deep pothole is damaging vehicles near the main bus stop.","category":"Roads & Infrastructure","severity":"medium","latitude":19.076,"longitude":72.8777,"location_accuracy_m":8,"location_text":"Main Road bus stop","locality":"Central","area":"Market","ward":"Ward 4"}` | 201, individual Complaint with its own `incident_id`; owner from token; `same_incident_candidates` are suggestions only | 401; 403 wrong role; 422 |
 | GET | `/api/v1/users/me/complaints` | Yes / citizen | No body; query example `?offset=0&limit=20` | Array of own Complaint objects, newest ID first | 401; 403; 422 |
 | GET | `/api/v1/users/me/dashboard` | Yes / citizen | No body | StatusCounts plus `submitted_under_review` | 401; 403 |
 | GET | `/api/v1/complaints` | Yes / citizen, authority, admin | No body; query example `?offset=0&limit=20` | Array of Complaint objects restricted to caller scope | 401; 422 |
@@ -116,15 +124,20 @@ forced first-login password-change flow yet.
 | POST | `/api/v1/complaints/{complaint_id}/verify` | Yes / owner citizen | `{"resolved":true,"feedback":"The pothole has been repaired."}` | Complaint: `status=resolved`, `verification_status=approved`; rejection described below | 401; 403; 404; 409 not awaiting verification; 422 |
 | GET | `/api/v1/complaints/{complaint_id}/evidence` | Yes / owner citizen, in-scope authority, admin | No body | Array of Evidence objects, oldest first | 401; 403; 404; 422 |
 | POST | `/api/v1/complaints/{complaint_id}/evidence` | Yes / owner citizen, in-scope authority, admin | `{"image_url":"https://example.com/follow-up.jpg","evidence_type":"supporting"}` | 201, Evidence | 401; 403 scope/citizen resolution evidence; 404; 422 |
+| POST | `/api/v1/complaints/{complaint_id}/evidence/upload` | Yes / owner citizen, in-scope authority, admin | Multipart `file` (JPEG/PNG/WebP, <= configured limit), optional `evidence_type` | 201 Evidence metadata; private bucket/object identifiers omitted | 401; 403; 413; 415/422; 503 |
+| GET | `/api/v1/complaints/{complaint_id}/evidence/{evidence_id}/access` | Yes / owner citizen, in-scope authority, admin | No body | Private `signed_url`, `expires_in` (300 seconds), `Cache-Control: no-store` | 401; 403; 404; 409 legacy URL; 503 |
+| GET | `/api/v1/complaints/{complaint_id}/incident` | Yes / owner citizen, in-scope authority, admin | No body | Aggregate Incident counts/status; no other reporter data | 401; 403; 404 |
 | GET | `/api/v1/notifications` | Yes / citizen, authority, admin; own records | No body; query example `?is_read=false&offset=0&limit=20` | Array of Notification objects, newest ID first | 401; 422 |
 | PATCH | `/api/v1/notifications/{notification_id}/read` | Yes / notification owner, any role | No body | Notification with `is_read=true` | 401; 404 missing/not owned; 422 |
 | PATCH | `/api/v1/notifications/read-all` | Yes / citizen, authority, admin; own records | No body | `updated` count | 401 |
 
-Creation requires title (1-200 characters), description (1-10,000), category (1-100),
-address (1-500), and finite latitude/longitude in -90..90 and -180..180. Whitespace-
-only text is rejected. `severity` defaults to `medium`. Optional nullable `image_url`
-is an HTTP(S) URL, maximum 2,048 characters. Optional legacy `assigned_department`
-text does not grant an assignment; staff route by department/officer IDs.
+Creation requires title (1-200 characters), description (1-10,000), and category
+(1-100). Location is optional. If either coordinate is supplied, both finite latitude
+(-90..90) and longitude (-180..180) are required. `location_accuracy_m` is optional
+(0..100,000); `location_text` is an alias for `address`; optional `locality`, `area`,
+and `ward` accept 1-100 characters. `severity` defaults to `medium`. Optional
+nullable `image_url` is an HTTP(S) URL, maximum 2,048 characters. Optional legacy
+`assigned_department` text does not grant an assignment; staff route by IDs.
 
 Suggested categories match seeded department names: Roads & Infrastructure,
 Sanitation, Water Supply, Street Lighting, Drainage, Parks & Gardens,
@@ -137,10 +150,14 @@ It becomes `status=reopened`, `verification_status=rejected`. Only a
 `verification_pending` complaint can be verified. Citizens cannot directly change
 status or reopen an accepted resolution; scoped staff can reopen it.
 
-Evidence is URL metadata only; `evidence_type` is `report`, `resolution`, or
-`supporting` (default). Citizens cannot submit `resolution` evidence. No binary
-upload, file storage, URL fetch, external notification push, or email transport is
-provided. URLs sent in creation/resolution also create evidence metadata.
+Evidence can be legacy/external HTTP(S) URL metadata or a private uploaded object.
+The upload endpoint accepts JPEG/PNG/WebP only, defaults to a 10 MiB maximum, ignores
+client filenames, and stores randomized object names in a private bucket. Signed
+access links expire after five minutes. Without valid Supabase Storage configuration,
+uploads return 503 while complaint reporting and URL metadata remain usable. No URL
+is fetched. `evidence_type` is `report`, `resolution`, or `supporting` (default);
+citizens cannot submit `resolution` evidence. Resolution evidence is shared as
+metadata across reports linked to the same incident.
 
 ## AUTHORITY
 
@@ -159,8 +176,11 @@ also support scoped staff.
 | PATCH | `/api/v1/authority/complaints/{complaint_id}/status` | Yes / in-scope authority, admin | `{"status":"in_progress"}` | Complaint; timeline event persisted | 401; 403; 404; 409 transition/assignment conflict; 422 |
 | PATCH | `/api/v1/complaints/{complaint_id}/status` | Yes / in-scope authority, admin | `{"status":"under_review"}` | Complaint; compatibility route with the same transition rules | 401; 403; 404; 409; 422 |
 | POST | `/api/v1/authority/complaints/{complaint_id}/remarks` | Yes / in-scope authority, admin | `{"text":"Inspection completed; repair crew scheduled."}` | 201, `id`, `complaint_id`, `author_user_id`, `text`, `created_at`; also in timeline | 401; 403; 404; 422 |
-| POST | `/api/v1/authority/complaints/{complaint_id}/resolve` | Yes / in-scope authority, admin | `{"resolution_notes":"Pothole filled and surface levelled.","evidence_url":"https://example.com/resolution.jpg"}` | Complaint: `status=verification_pending`, `verification_status=pending`, `resolved_at` | 401; 403; 404; 409 invalid current state; 422 |
+| POST | `/api/v1/authority/complaints/{complaint_id}/resolve` | Yes / in-scope authority, admin | `{"resolution_notes":"Pothole filled and surface levelled.","evidence_url":"https://example.com/resolution.jpg"}` | Complaint and linked reports: `status=verification_pending`; resolution evidence is shared as per-report metadata | 401; 403; 404; 409 invalid current state; 422 |
 | POST | `/api/v1/authority/complaints/{complaint_id}/reopen` | Yes / in-scope authority, admin | No body | Complaint: `status=reopened`, `verification_status=reopened`, `resolved_at=null` | 401; 403; 404; 409 not resolved/verification pending; 422 |
+| GET | `/api/v1/authority/incidents` | Yes / authority, admin | Optional `status`, `offset`, `limit` | Scoped Incident aggregates | 401; 403; 422 |
+| GET | `/api/v1/authority/complaints/{complaint_id}/incident-candidates` | Yes / in-scope authority, admin | No body | Candidate `incident_id`, similarity, approximate distance, reason; no other report IDs/text | 401; 403; 404 |
+| POST | `/api/v1/authority/complaints/{complaint_id}/incident` | Yes / in-scope authority, admin | `{"incident_id":12,"reason":"Same damaged road section and nearby location confirmed."}` | Updated individual Complaint with shared `incident_id` | 401; 403; 404; 409 invalid/empty target; 422 |
 | GET | `/api/v1/authority/analytics/summary` | Yes / authority, admin | No body; optional date query below | StatusCounts, `average_resolution_hours` (nullable), `resolution_sample_count` | 401; 403; 422 |
 | GET | `/api/v1/authority/analytics/categories` | Yes / authority, admin | No body; optional date query | Array of `category`, `total` | 401; 403; 422 |
 | GET | `/api/v1/authority/analytics/departments` | Yes / authority, admin | No body; optional date query | Array of `department_id` (nullable), `department`, `total`; missing is `Unassigned` | 401; 403; 422 |
@@ -173,6 +193,21 @@ Complaint filters: `status`, `category` (exact text), `priority`, `department`
 substring), `offset`, `limit`. If both location/area are supplied, area wins.
 Filters never broaden authority scope.
 The persisted verification queue is the same list with `?status=verification_pending`.
+
+Each citizen POST creates a separate complaint report and a separate incident by
+default. Candidate matches use local text similarity, compatible category, a recent
+open workflow window, and Haversine distance when both locations are supplied. The
+create response exposes only suggested incident IDs/scores/reasons, not another
+complaint ID or text. There is no automatic merge. Staff must explicitly confirm a
+link with the incident POST above. Linking preserves both complaint IDs and their
+individual histories/evidence. The former incident is removed only if it has no
+remaining reports.
+
+Assignment, progress, remarks, and resolution submitted on any member report update
+the shared incident and sibling report workflow. On resolution, each distinct
+reporting citizen must approve for the shared incident to become `resolved`; any
+citizen rejection reopens the incident. A citizen sees aggregate incident counts but
+not other reporters' names, report text, IDs, or verification feedback.
 
 Authority officer listing defaults to `is_active=true`. Authorities list their
 own department; admins can supply `department=<id>` or omit it for all departments.
@@ -284,6 +319,19 @@ Suggestions never block submission, assign staff automatically, overwrite user
 choices, merge complaints, or close a case. Category, department, priority, and
 duplicate suggestions use local code without an API key or remote model. Optional
 Gemini is limited to chatbot responses and image-assisted draft descriptions.
+
+## CHATBOT
+
+## LANGUAGE / BHASHINI
+
+| Method | Endpoint | Auth required / allowed role | Request body example | Important response fields | Typical errors |
+| --- | --- | --- | --- | --- | --- |
+| GET | `/api/v1/language/capabilities` | No / public | No body | `provider=bhashini`, `enabled=false`, `pending_approval=true`, unavailable capabilities, fallbacks | None expected |
+| POST | `/api/v1/language/translate` | Yes / citizen, authority, admin | `{"text":"सड़क पर गड्ढा है।","source_language":"hi-IN","target_language":"en"}` | `available=false`, `translated=false`, `status=unavailable`, original text preserved in `text` and `original_text` | 401; 422 |
+
+BHASHINI remains disabled pending approval. These routes make no network calls,
+accept no provider credentials, and do not claim to perform speech recognition,
+translation, synthesis, OCR, language detection, or transliteration.
 
 ## CHATBOT
 

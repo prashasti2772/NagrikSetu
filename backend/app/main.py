@@ -5,7 +5,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.db.database import engine
-from app.routers import complaints, health, auth, workflow, admin, analytics, notifications, intelligence, evidence, chatbot
+from app.routers import (complaints, health, auth, workflow, admin, analytics, notifications,
+                         intelligence, evidence, chatbot, incidents, language)
 from app.db.initialize import initialize_database
 
 
@@ -27,7 +28,7 @@ app.include_router(health.router)
 app.include_router(complaints.router)
 app.include_router(auth.router)
 app.include_router(workflow.router)
-for router_module in (admin, analytics, notifications, intelligence, evidence, chatbot):
+for router_module in (admin, analytics, notifications, intelligence, evidence, chatbot, incidents, language):
     app.include_router(router_module.router)
 
 

@@ -3,7 +3,7 @@
 from datetime import datetime, timezone
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl, StringConstraints, UrlConstraints, field_serializer
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, StringConstraints, UrlConstraints, field_serializer, model_validator
 
 from app.models.complaint import ComplaintStatus
 
@@ -22,17 +22,37 @@ class ComplaintCreate(BaseModel):
     description: Description
     category: ShortText
     severity: Severity = "medium"
-    latitude: float = Field(ge=-90, le=90, allow_inf_nan=False)
-    longitude: float = Field(ge=-180, le=180, allow_inf_nan=False)
-    address: Address
+    latitude: float | None = Field(default=None, ge=-90, le=90, allow_inf_nan=False)
+    longitude: float | None = Field(default=None, ge=-180, le=180, allow_inf_nan=False)
+    address: Address | None = None
+    location_text: Address | None = Field(default=None, exclude=True)
+    location_accuracy_m: float | None = Field(default=None, ge=0, le=100000, allow_inf_nan=False)
+    locality: ShortText | None = None
+    area: ShortText | None = None
+    ward: ShortText | None = None
     image_url: Annotated[HttpUrl, UrlConstraints(max_length=2048)] | None = None
     assigned_department: ShortText | None = None
+
+    @model_validator(mode="after")
+    def normalize_location(self):
+        if (self.latitude is None) != (self.longitude is None):
+            raise ValueError("latitude and longitude must be provided together")
+        if self.address is None:
+            self.address = self.location_text
+        return self
 
 
 class ComplaintStatusUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     status: ComplaintStatus
+
+
+class SameIncidentCandidate(BaseModel):
+    incident_id: int
+    similarity: float = Field(ge=0, le=1)
+    approximate_distance_m: float | None
+    reason: str
 
 
 class ComplaintRead(BaseModel):
@@ -43,9 +63,19 @@ class ComplaintRead(BaseModel):
     description: str
     category: str
     severity: Severity
-    latitude: float
-    longitude: float
-    address: str
+    latitude: float | None
+    longitude: float | None
+    address: str | None
+    location_accuracy_m: float | None = None
+    locality: str | None = None
+    area: str | None = None
+    ward: str | None = None
+    incident_id: int | None = None
+    incident_link_method: str | None = None
+    incident_link_reason: str | None = None
+    incident_link_score: float | None = None
+    incident_link_distance_m: float | None = None
+    same_incident_candidates: list[SameIncidentCandidate] = Field(default_factory=list)
     image_url: str | None
     status: ComplaintStatus
     assigned_department: str | None

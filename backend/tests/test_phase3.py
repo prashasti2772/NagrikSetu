@@ -223,7 +223,7 @@ class MigrationTests(unittest.TestCase):
             e=build_engine('sqlite:///'+folder+'/fresh.db')
             initialize_database(e)
             with e.connect() as c:
-                self.assertEqual(c.scalar(text('SELECT version_num FROM alembic_version')),'0003_workflow_audit')
+                self.assertEqual(c.scalar(text('SELECT version_num FROM alembic_version')),'0004_integrations')
                 self.assertEqual(compare_metadata(MigrationContext.configure(c),Base.metadata),[])
             cfg=migration_config()
             with e.begin() as c:
@@ -236,12 +236,28 @@ class MigrationTests(unittest.TestCase):
     def test_existing_phase2_database_is_adopted_without_data_loss(self):
         with tempfile.TemporaryDirectory() as folder:
             e=build_engine('sqlite:///'+folder+'/existing.db')
-            tables=[t for t in Base.metadata.sorted_tables if t.name not in {'notifications','complaint_evidence','complaint_suggestions'}]
+            tables=[t for t in Base.metadata.sorted_tables if t.name not in {
+                'notifications','complaint_evidence','complaint_suggestions','incidents'}]
             snapshot = MetaData()
             for table in tables:
                 table.to_metadata(snapshot)
             snapshot.tables['complaints'].c.resolved_at.type = TIMESTAMP()
             # Freeze the legacy fixture rather than including later model additions.
+            for table_name, names in {
+                'users': ['email_verified'],
+                'password_otps': ['purpose'],
+                'complaints': ['location_accuracy_m','locality','area','ward','incident_id',
+                    'incident_link_method','incident_link_reason','incident_link_score','incident_link_distance_m'],
+            }.items():
+                table = snapshot.tables[table_name]
+                for name in names:
+                    column = table.c[name]
+                    for foreign_key in list(column.foreign_keys):
+                        table.constraints.discard(foreign_key.constraint)
+                        table.foreign_keys.discard(foreign_key)
+                    table._columns.remove(column)
+            for name in ('latitude','longitude','address'):
+                snapshot.tables['complaints'].c[name].nullable = False
             history = snapshot.tables['complaint_status_history']
             for name in ['action', 'verification_status', 'old_department_id', 'new_department_id', 'old_officer_id', 'new_officer_id']:
                 column = history.c[name]
@@ -263,6 +279,29 @@ class MigrationTests(unittest.TestCase):
                 cfg = migration_config()
                 cfg.attributes['connection'] = c
                 command.check(cfg)
+            e.dispose()
+
+    def test_populated_0003_upgrade_preserves_reports_history_and_evidence(self):
+        with tempfile.TemporaryDirectory() as folder:
+            e=build_engine('sqlite:///'+folder+'/workflow.db')
+            cfg=migration_config()
+            with e.begin() as connection:
+                cfg.attributes['connection']=connection
+                command.upgrade(cfg,'0003_workflow_audit')
+            with e.begin() as connection:
+                connection.execute(text("INSERT INTO departments (id,name,description,is_active) VALUES (501,'Roads',NULL,1)"))
+                connection.execute(text("INSERT INTO users (id,full_name,email,password_hash,role,is_active,token_version,created_at,updated_at) VALUES (501,'Existing citizen','existing.501@example.com','fixture-only','citizen',1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)"))
+                connection.execute(text("INSERT INTO complaints (id,title,description,category,severity,latitude,longitude,address,status,created_at,updated_at,citizen_id,priority,verification_status) VALUES (501,'Existing report','Legacy report detail','Roads','medium',22,77,'Existing address','submitted',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,501,'medium','pending')"))
+                connection.execute(text("INSERT INTO complaint_status_history (complaint_id,old_status,new_status,changed_by_user_id,remarks,created_at,action) VALUES (501,NULL,'submitted',501,'preserve this timeline','2026-01-01 00:00:00','complaint_submitted')"))
+                connection.execute(text("INSERT INTO complaint_evidence (complaint_id,image_url,evidence_type,uploaded_at,uploaded_by) VALUES (501,'https://example.com/old-evidence.jpg','report',CURRENT_TIMESTAMP,501)"))
+            initialize_database(e)
+            with e.connect() as connection:
+                self.assertEqual(connection.scalar(text('SELECT version_num FROM alembic_version')),'0004_integrations')
+                self.assertEqual(connection.execute(text('SELECT id,title,incident_id FROM complaints WHERE id=501')).one(),(501,'Existing report',501))
+                self.assertEqual(connection.scalar(text('SELECT remarks FROM complaint_status_history WHERE complaint_id=501')),'preserve this timeline')
+                self.assertEqual(connection.scalar(text('SELECT image_url FROM complaint_evidence WHERE complaint_id=501')),'https://example.com/old-evidence.jpg')
+                self.assertEqual(connection.scalar(text('SELECT COUNT(*) FROM incidents WHERE id=501')),1)
+                self.assertEqual(connection.scalar(text('PRAGMA foreign_keys')),1)
             e.dispose()
 
     def test_postgresql_offline_migrations_compile_without_credentials(self):

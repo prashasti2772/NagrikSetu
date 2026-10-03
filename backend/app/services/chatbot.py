@@ -41,9 +41,24 @@ def reply(db, payload, user, gemini=None):
         return ChatReply(answer='Please provide the complaint ID, for example "status of complaint #123". You can find it in My Complaints.',
                          topic="complaint_id_required", suggestions=["How do I track a complaint?"])
     if gemini is not None:
-        generated = gemini.chat_reply(payload.message)
-        if generated:
-            return ChatReply(**generated)
+        try:
+            generated = gemini.chat_reply(sanitize_user_text(payload.message))
+            if isinstance(generated, dict):
+                # Provider output cannot inject a complaint snapshot or a status claim.
+                raw_answer = generated.get("answer")
+                suggestions = generated.get("suggestions")
+                if isinstance(raw_answer, str) and isinstance(suggestions, list):
+                    answer = sanitize_user_text(raw_answer)[:3_000]
+                else:
+                    answer = ""
+                if answer:
+                    return ChatReply(answer=answer, topic="general", suggestions=[
+                        sanitize_user_text(item)[:200] for item in suggestions[:5]
+                        if isinstance(item, str) and sanitize_user_text(item)
+                    ])
+        except Exception:
+            # Fall through to trusted local knowledge on any optional provider error.
+            pass
     ranked = []
     for item in knowledge():
         matches = [phrase for phrase in item["phrases"] if re.search(r"\b" + re.escape(phrase) + r"\b", message)]

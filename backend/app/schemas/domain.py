@@ -31,6 +31,9 @@ class Login(EmailInput):
 class OTPVerify(EmailInput):
     otp: str = Field(pattern=r"^\d{6}$")
 
+class EmailVerification(Input):
+    otp: str = Field(pattern=r"^[0-9]{6}$")
+
 class Reset(Input):
     reset_token: str = Field(min_length=20, max_length=200)
     new_password: Password
@@ -43,6 +46,7 @@ class UserRead(BaseModel):
     phone: str | None
     role: str
     is_active: bool
+    email_verified: bool
     employee_id: str | None
     designation: str | None
     department_id: int | None

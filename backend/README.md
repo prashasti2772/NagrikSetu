@@ -48,7 +48,9 @@ It does not return database URLs, credentials, or raw database errors.
 ## Database configuration
 
 The backend reads `DATABASE_URL` from the process environment. `.env.example`
-is a reference, not an automatically loaded configuration file.
+is a reference, not automatically loaded. Only optional Gemini, Brevo, and private
+Storage settings are read from `backend/.env`; process environment values take
+precedence. SQL database and JWT settings remain process-environment only.
 Missing, empty, or whitespace-only values use the existing absolute path
 `backend/nagriksetu.db`, regardless of the working directory.
 
@@ -121,12 +123,13 @@ Recovery: POST `auth/forgot-password` with `email`, then `auth/verify-otp` with
 `email` and `otp`, then `auth/reset-password` with the returned `reset_token` and
 `new_password`. All paths use `/api/v1/`. Codes are hashed, expire after
 `OTP_EXPIRE_MINUTES`, allow five attempts, and can only be verified once. Issuance
-has a 60-second per-account cooldown. Reset tokens are single-use and expire with
-the OTP. Password resets invalidate existing access tokens. Development delivery
-logs the code to the terminal only; API responses never contain OTPs. Replace
-`get_otp_delivery` with a Brevo adapter for deployed email; the Brevo environment
-variables are placeholders and no external email is sent yet. The prototype includes per-process limits; use a shared ingress
-rate limiter for deployment-wide login and recovery abuse protection.
+has a 60-second per-email/purpose cooldown. Reset tokens are single-use and expire
+with the OTP. Password resets invalidate existing access tokens. When configured,
+registration, forgot-password, and email verification use the Brevo REST adapter
+over verified TLS. Without Brevo in development, no message is sent and no OTP is
+logged; API responses never contain OTPs. Email verification is advisory and never
+blocks login/reporting. The prototype includes per-process limits; use a shared
+ingress rate limiter for deployment-wide login and recovery abuse protection.
 
 ## Workflow and permissions
 
@@ -161,6 +164,16 @@ Listing and detail require authentication: citizens see their own reports, autho
 see department/officer-scoped reports, and admins see all. Legacy anonymous reports
 remain preserved and cannot be citizen-verified. The compatibility PATCH complaint
 status endpoint requires scoped authority/admin access.
+
+Every citizen report is independently retained and starts in its own incident.
+Possible same-issue candidates use local text/category similarity, recency, and
+Haversine distance where both coordinate pairs are available. Candidates are
+explanatory suggestions; only scoped staff can explicitly confirm consolidation.
+Linking never deletes reports or their histories. Shared incident updates propagate
+to linked reports. Each distinct reporting citizen must approve a resolution; any
+rejection reopens the shared incident. Location is optional; coordinates must be
+provided as a pair, and `location_text` is accepted as an address alias. Optional
+`location_accuracy_m`, `locality`, `area`, and `ward` are persisted.
 
 Provision staff through the local operator CLI (password is prompted, never an argument):
 
@@ -199,6 +212,10 @@ Revision `0003_workflow_audit` extends the existing timeline with action,
 verification state and assignment history fields, and adds complaint query indexes.
 Existing history is retained with action `legacy`; missing historical assignments
 are not invented. SQLite connections enable foreign key enforcement.
+Revision `0004_integrations` adds optional location fields, one incident per existing
+complaint (preserving IDs and workflow values), purpose-scoped OTP/email verification,
+and private evidence-object metadata. SQLite migration FK checks run before enforcement
+is restored.
 Run schema upgrades once before starting multiple application workers. Existing string
 `assigned_department` values remain intact; admins assign department IDs to route them.
 
@@ -302,12 +319,19 @@ Notifications are committed atomically with complaint submission, assignment, st
 change, resolution submission, verification request and reopening. Inactive accounts
 cannot log in to retrieve them. There is no external push/email transport.
 
-Evidence is URL metadata only: image_url, evidence_type (`report`, `resolution`,
-`supporting`), uploaded_at (server UTC), uploaded_by (authenticated user or null for
-legacy records). Existing complaint image and resolution URLs are recorded on new
-submissions/resolutions. Old URLs remain preserved on complaints; historical uploader
-and upload timestamps are not invented. No URL is fetched, and no binary file is stored.
-Cloudinary or Supabase Storage can later supply URLs via a storage adapter.
+Evidence may be an existing HTTP(S) URL or an uploaded private object. Uploads accept
+JPEG/PNG/WebP, default to 10 MiB (`EVIDENCE_MAX_BYTES`), ignore client filenames, and
+use randomized object names in a private Supabase Storage bucket. Access links expire
+after five minutes and are issued only after complaint-scope checks. Without storage
+credentials startup remains normal and upload returns 503; URL evidence/reporting
+remain usable. No URL is fetched and uploaded objects are never public.
+
+Optional `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, and `SUPABASE_STORAGE_BUCKET` configure
+Storage only; they do not select or migrate the SQL database. Optional
+`BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, and `BREVO_SENDER_NAME` enable transactional
+email using REST, not SMTP. Gemini remains optional. BHASHINI capability discovery
+and text-preserving fallback remain disabled pending approval; no provider endpoints
+or credentials are assumed.
 
 ## Local complaint intelligence
 

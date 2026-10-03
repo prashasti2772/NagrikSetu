@@ -24,7 +24,8 @@ def permitted(complaint, user):
         return
     raise HTTPException(403, "Complaint access denied")
 
-def record(db, complaint, user, old_status, remarks=None, event=None, *, action=None, old_assignment=None):
+def record(db, complaint, user, old_status, remarks=None, event=None, *, action=None,
+           old_assignment=None, propagate=True):
     if action is None:
         action = event or ("complaint_submitted" if old_status is None else "status_changed")
     previous_department, previous_officer = old_assignment or (None, None)
@@ -35,6 +36,9 @@ def record(db, complaint, user, old_status, remarks=None, event=None, *, action=
         new_department_id=complaint.assigned_department_id, new_officer_id=complaint.assigned_officer_id))
     complaint.updated_at = utc_now()
     workflow_notifications(db, complaint, old_status, event)
+    if propagate and complaint.incident_id is not None:
+        from app.services.incidents import sync_workflow
+        sync_workflow(db, complaint, user, action, remarks)
 
 TRANSITIONS = {
     "submitted": {"under_review", "assigned"},

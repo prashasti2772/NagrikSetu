@@ -16,7 +16,7 @@ from app.core.security import password_hasher
 from app.db.database import build_engine
 from app.db.initialize import DEPARTMENTS, initialize_database
 from app.models.complaint import Complaint, ComplaintStatus
-from app.models.domain import ComplaintStatusHistory, ComplaintSuggestion, Department, Notification, User
+from app.models.domain import ComplaintStatusHistory, ComplaintSuggestion, Department, Incident, Notification, User
 from app.seed_dev import DEMO_USERS, main, seed_demo
 
 
@@ -42,6 +42,8 @@ class DemoSeedTests(unittest.TestCase):
             self.assertTrue(all(password_hasher.verify(self.password, user.password_hash) for user in users))
             samples = db.scalars(select(Complaint)).all()
             self.assertEqual(len(samples), 3)
+            self.assertEqual(len({sample.incident_id for sample in samples}), 3)
+            self.assertEqual(db.scalar(select(func.count()).select_from(Incident)), 3)
             for sample in samples:
                 self.assertTrue(sample.title.startswith('[SAMPLE]'))
                 self.assertTrue(sample.description.startswith('SAMPLE DATA ONLY:'))

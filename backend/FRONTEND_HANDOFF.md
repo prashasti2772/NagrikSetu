@@ -24,8 +24,10 @@ Startup applies migrations and seeds reference departments. Without
 `{"status":"ok","database":"connected"}`. Swagger is at
 `http://127.0.0.1:8000/docs`.
 
-The backend reads process environment variables; it does not automatically load
-a `.env` file. Default CORS origins are `http://localhost:5173` and
+The backend reads process environment variables. Optional Gemini, Brevo, and
+Supabase Storage settings may also be supplied through ignored `backend/.env`;
+process environment values take precedence. SQL database and JWT settings are not
+loaded from `.env`. Default CORS origins are `http://localhost:5173` and
 `http://127.0.0.1:5173`. Set `CORS_ORIGINS` before starting the backend if your
 frontend uses another origin. In development, an omitted `JWT_SECRET` generates
 a temporary secret for each backend process, so sign in again after a restart or
@@ -75,12 +77,13 @@ const baseUrl = import.meta.env.VITE_API_BASE_URL.replace(/\/$/, "");
 
 export async function api(path, { method = "GET", body, token } = {}) {
   const headers = new Headers();
-  if (body !== undefined) headers.set("Content-Type", "application/json");
+  const isForm = typeof FormData !== "undefined" && body instanceof FormData;
+  if (body !== undefined && !isForm) headers.set("Content-Type", "application/json");
   if (token) headers.set("Authorization", `Bearer ${token}`);
   const response = await fetch(`${baseUrl}${path}`, {
     method,
     headers,
-    body: body === undefined ? undefined : JSON.stringify(body),
+    body: body === undefined ? undefined : isForm ? body : JSON.stringify(body),
   });
   const data = await response.json().catch(() => null);
   if (!response.ok) {
@@ -114,13 +117,15 @@ through `PATCH /api/v1/auth/me`; role and department changes remain admin-manage
 | --- | --- |
 | Citizen dashboard and reports | `/api/v1/users/me/dashboard`, `/api/v1/users/me/complaints`, `/api/v1/complaints` |
 | Profile and settings | `GET /api/v1/auth/me`, `PATCH /api/v1/auth/me` |
-| Complaint detail and history | `/api/v1/complaints/{id}`, `/api/v1/complaints/{id}/timeline`, `/api/v1/complaints/{id}/evidence` |
+| Complaint detail and history | `/api/v1/complaints/{id}`, `/api/v1/complaints/{id}/timeline`, `/api/v1/complaints/{id}/incident`, `/api/v1/complaints/{id}/evidence` |
 | Citizen resolution review | `POST /api/v1/complaints/{id}/verify` with `resolved` and optional `feedback` |
-| Authority queue and work | `/api/v1/authority/dashboard`, `/api/v1/authority/complaints`, `/api/v1/authority/officers`; complaint actions `assign`, `status`, `remarks`, `resolve`, `reopen` |
+| Authority queue and work | `/api/v1/authority/dashboard`, `/api/v1/authority/complaints`, `/api/v1/authority/officers`, `/api/v1/authority/incidents`; complaint actions `assign`, `status`, `remarks`, `resolve`, `reopen`, and explicit incident linking |
 | Verification queue | `/api/v1/authority/complaints?status=verification_pending` |
 | Admin accounts and routing | `/api/v1/admin/users`, `/api/v1/admin/authorities`, `/api/v1/admin/officers`, `/api/v1/admin/departments` |
 | Authority/admin charts | `/api/v1/authority/analytics/{summary,categories,departments,priorities,trends,recent}` — choose one suffix |
+| Evidence upload/access | Multipart `POST /api/v1/complaints/{id}/evidence/upload`; fetch short-lived private URL from `GET /api/v1/complaints/{id}/evidence/{evidence_id}/access` |
 | Notifications | `/api/v1/notifications` and documented read actions |
+| Language capability fallback | `GET /api/v1/language/capabilities`; authenticated `POST /api/v1/language/translate` returns original text unchanged while BHASHINI approval is pending |
 | Local ML assistance | `POST /api/v1/intelligence/analyze-complaint` |
 | Support chatbot | `POST /api/v1/chatbot/message` (JSON FAQ/status) and `POST /api/v1/chatbot/analyze` (multipart draft/image suggestions) |
 
@@ -136,12 +141,15 @@ becomes `reopened`. Verification values are `pending`, `approved`, `rejected`, a
 `reopened`. Severity and priority values are `low`, `medium`, `high`, `critical`.
 Use dedicated resolve/verify/reopen actions for these transitions.
 
-ML suggestions do not replace the citizen's selected category or priority and do
-not merge complaints. Chatbot replies do not change complaint state. Evidence
-currently stores HTTP(S) URL metadata; there is no binary upload endpoint. Password
-reset OTPs print to the backend terminal in development; external email delivery
-is not connected. All API times represent UTC; see the contract for timestamp
-format details.
+ML suggestions do not replace the citizen's selected category or priority. Every
+citizen report remains an individual record; candidate same-issue reports are never
+merged automatically. Authorities explicitly consolidate confirmed reports under an
+incident. Shared incident resolution waits for each distinct reporting citizen to
+approve; a rejection reopens the shared workflow. Complaint location is optional;
+send latitude and longitude together when available, with optional accuracy/locality/
+area/ward, and `location_text` as an address alias. Chatbot replies do not change
+complaint state. OTP codes are never logged; configured Brevo delivers them over REST.
+All API times represent UTC; see the contract for timestamp format details.
 
 The chatbot analyze endpoint accepts optional text, an optional JPEG/PNG/GIF/WebP
 image (5 MB maximum), optional coordinates, and an optional permitted complaint ID;
@@ -152,3 +160,11 @@ complaint. Configure `GEMINI_API_KEY` only in the backend environment or ignored
 `backend/.env`; `GEMINI_MODEL` is optional. Without a working Gemini service, local
 FAQ and text-based draft behavior remains available. Local fallback does not inspect
 image pixels and asks for a written description instead.
+
+Private binary evidence uploads require `SUPABASE_URL` and `SUPABASE_SECRET_KEY` for
+the private `SUPABASE_STORAGE_BUCKET` (default `complaint-evidence`). Without these
+optional settings, the backend still starts and legacy URL evidence remains available;
+private uploads return 503. Keep SQL `DATABASE_URL` separate from the Storage URL/key.
+BHASHINI remains disabled pending approval; its capability and text fallback routes
+do not call a provider. The capability endpoint reports all provider operations as
+unavailable; authenticated translate preserves the exact submitted Unicode text.

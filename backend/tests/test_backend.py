@@ -16,7 +16,7 @@ from app.core.config import Settings
 from app.core.security import password_hasher
 from app.models.domain import User, PasswordOTP, ComplaintRemark
 from app.models.complaint import utc_now
-from app.core.otp import get_otp_delivery
+from app.core.otp import get_otp_delivery, get_registration_email_delivery
 
 class Delivery:
     def send(self, email, otp):
@@ -31,6 +31,7 @@ class BackendTests(unittest.TestCase):
             connection.execute(text("DROP TABLE IF EXISTS alembic_version"))
         self.delivery = Delivery()
         app.dependency_overrides[get_otp_delivery] = lambda: self.delivery
+        app.dependency_overrides[get_registration_email_delivery] = lambda: None
         self.client = TestClient(app)
         self.client.__enter__()
         self.password = 'local-test-password-392!'

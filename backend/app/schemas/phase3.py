@@ -68,7 +68,15 @@ class EvidenceRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
     complaint_id: int
-    image_url: str
+    image_url: str | None
     evidence_type: str
     uploaded_at: datetime
     uploaded_by: int | None
+    content_type: str | None = None
+    size_bytes: int | None = None
+
+
+class EvidenceAccess(BaseModel):
+    evidence_id: int
+    signed_url: str
+    expires_in: int

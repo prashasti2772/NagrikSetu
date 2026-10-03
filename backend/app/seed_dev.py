@@ -13,6 +13,7 @@ from app.db.initialize import initialize_database
 from app.models.complaint import Complaint, ComplaintStatus
 from app.models.domain import ComplaintStatusHistory, Department, User
 from app.services.intelligence import save_suggestion
+from app.services.incidents import ensure_incident
 
 
 DEMO_USERS = (
@@ -114,6 +115,7 @@ def seed_demo(engine, password, app_env="development"):
             )
             db.add(complaint)
             db.flush()
+            ensure_incident(db, complaint)
             save_suggestion(db, complaint)
             record(db, complaint, citizen, None, marker)
             department = departments[sample["category"]]

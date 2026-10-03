@@ -4,25 +4,25 @@ import os
 import secrets
 from dataclasses import dataclass, field
 from pathlib import Path
-from dotenv.parser import parse_stream
+from dotenv import dotenv_values
 
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
+_LOCAL_ENV = dotenv_values(BACKEND_DIR / ".env")
 
 
-def gemini_dotenv_values():
-    values = {}
+def integration_setting(name, default=""):
+    if name in os.environ:
+        return os.environ[name]
+    return _LOCAL_ENV.get(name) or default
+
+
+def integration_int(name, default):
     try:
-        with (BACKEND_DIR / ".env").open(encoding="utf-8") as environment_file:
-            for binding in parse_stream(environment_file):
-                if binding.key in {"GEMINI_API_KEY", "GEMINI_MODEL"}:
-                    values[binding.key] = binding.value or ""
-    except OSError:
-        pass
-    return values
-
-
-_GEMINI_DOTENV = gemini_dotenv_values()
+        value = int(integration_setting(name, str(default)))
+    except (TypeError, ValueError):
+        return default
+    return value if value > 0 else default
 
 
 @dataclass(frozen=True)
@@ -46,8 +46,15 @@ class Settings:
     rate_limit_forgot: int = field(default_factory=lambda: int(os.getenv("RATE_LIMIT_FORGOT", "5")))
     rate_limit_verify: int = field(default_factory=lambda: int(os.getenv("RATE_LIMIT_VERIFY", "10")))
     rate_limit_intelligence: int = field(default_factory=lambda: int(os.getenv("RATE_LIMIT_INTELLIGENCE", "20")))
-    gemini_api_key: str = field(default_factory=lambda: os.getenv("GEMINI_API_KEY", _GEMINI_DOTENV.get("GEMINI_API_KEY", "")).strip(), repr=False)
-    gemini_model: str = field(default_factory=lambda: os.getenv("GEMINI_MODEL", _GEMINI_DOTENV.get("GEMINI_MODEL", "")).strip() or "gemini-2.5-flash")
+    gemini_api_key: str = field(default_factory=lambda: integration_setting("GEMINI_API_KEY").strip(), repr=False)
+    gemini_model: str = field(default_factory=lambda: integration_setting("GEMINI_MODEL").strip() or "gemini-2.5-flash")
+    brevo_api_key: str = field(default_factory=lambda: integration_setting("BREVO_API_KEY").strip(), repr=False)
+    brevo_sender_email: str = field(default_factory=lambda: integration_setting("BREVO_SENDER_EMAIL").strip())
+    brevo_sender_name: str = field(default_factory=lambda: integration_setting("BREVO_SENDER_NAME", "NagrikSetu").strip())
+    supabase_url: str = field(default_factory=lambda: integration_setting("SUPABASE_URL").strip())
+    supabase_secret_key: str = field(default_factory=lambda: integration_setting("SUPABASE_SECRET_KEY").strip(), repr=False)
+    supabase_storage_bucket: str = field(default_factory=lambda: integration_setting("SUPABASE_STORAGE_BUCKET", "complaint-evidence").strip() or "complaint-evidence")
+    evidence_max_bytes: int = field(default_factory=lambda: integration_int("EVIDENCE_MAX_BYTES", 10 * 1024 * 1024))
     cors_origins: list[str] = field(default_factory=lambda: [
         origin.strip()
         for origin in os.getenv(

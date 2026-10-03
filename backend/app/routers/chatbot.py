@@ -11,7 +11,8 @@ from app.models.complaint import Complaint
 from app.schemas.chatbot import ChatMessage, ChatReply, ChatbotAnalyzeReply
 from app.schemas.phase3 import AnalyzeComplaint
 from app.services.chatbot import local_issue_draft, reply
-from app.services.gemini import get_gemini_service
+from app.services.gemini import get_gemini_service, sanitize_user_text
+from app.services.image_validation import ImageValidationError, validate_image
 from app.services.intelligence import analyze
 
 router = APIRouter(prefix="/api/v1/chatbot", tags=["chatbot"])
@@ -23,24 +24,13 @@ def message(payload: ChatMessage, db: DB, user = Depends(optional_user), gemini=
 
 
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
-IMAGE_SIGNATURES = {
-    "image/jpeg": (b"\xff\xd8\xff",),
-    "image/png": (b"\x89PNG\r\n\x1a\n",),
-    "image/gif": (b"GIF87a", b"GIF89a"),
-    "image/webp": (),
-}
-
-
 def image_mime(data, declared_type):
-    if declared_type not in IMAGE_SIGNATURES:
-        raise HTTPException(415, "Upload a JPEG, PNG, GIF, or WebP image")
-    if declared_type == "image/webp":
-        valid = len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP"
-    else:
-        valid = any(data.startswith(signature) for signature in IMAGE_SIGNATURES[declared_type])
-    if not valid:
-        raise HTTPException(415, "Image content does not match its declared type")
-    return declared_type
+    try:
+        validate_image(data, declared_type, max_bytes=MAX_IMAGE_BYTES, allow_gif=True)
+    except ImageValidationError as exc:
+        # Preserve the existing chatbot contract (storage uses its own 422 errors).
+        raise HTTPException(413 if exc.status_code == 413 else 415, exc.detail) from None
+    return declared_type.strip().lower()
 
 
 @router.post("/analyze", response_model=ChatbotAnalyzeReply,
@@ -81,9 +71,21 @@ async def analyze_input(message: Annotated[str | None, Form()] = None,
     provider = "local"
     draft = None
     if gemini is not None:
-        draft = gemini.analyze_issue(clean_message, image_data, image_type)
-        if draft:
-            provider = "gemini"
+        try:
+            generated = gemini.analyze_issue(sanitize_user_text(clean_message), image_data, image_type)
+            fields = ("title", "description", "assistant_message")
+            if isinstance(generated, dict) and all(
+                isinstance(generated.get(field), str) and generated[field].strip() for field in fields
+            ):
+                draft = {field: sanitize_user_text(generated[field])[:limit] for field, limit in
+                         (("title", 200), ("description", 10_000), ("assistant_message", 3_000))}
+                if all(draft.values()):
+                    provider = "gemini"
+                else:
+                    draft = None
+        except Exception:
+            # Optional provider errors must never expose credentials or block local drafting.
+            draft = None
     if draft is None:
         draft = local_issue_draft(clean_message, image_data is not None)
 
