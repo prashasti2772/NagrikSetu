@@ -31,7 +31,8 @@ class LanguageTests(unittest.TestCase):
             self.assertTrue(body["pending_approval"])
             self.assertEqual(body["provider"], "bhashini")
             self.assertEqual({entry["name"] for entry in body["capabilities"]},
-                             {"asr", "nmt", "tts", "ocr", "language_detection", "transliteration"})
+                             {"asr", "nmt", "tts", "ocr", "language_detection", "transliteration",
+                              "audio_language_detection", "text_language_detection", "punctuation", "voice_preprocessing"})
             self.assertTrue(all(not entry["available"] and entry["status"] == "not_configured"
                                 for entry in body["capabilities"]))
             self.assertIn("text_input", body["fallbacks"])

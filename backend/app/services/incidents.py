@@ -3,8 +3,9 @@ from datetime import timedelta
 from sqlalchemy import select, func, or_
 from fastapi import HTTPException
 from app.models.complaint import Complaint, ComplaintStatus, utc_now
-from app.models.domain import Incident, ComplaintEvidence, Department
+from app.models.domain import Incident, IncidentVerificationRound, ComplaintEvidence, Department
 from app.core.config import settings
+from app.services.verification import policy_summary, start_round, apply_quorum, mark_reopened
 from app.services.intelligence import category_key, tfidf_vectors, cosine, valid_coordinates, distance_km
 
 WORKFLOW_FIELDS = ("status", "priority", "assigned_department_id", "assigned_officer_id",
@@ -41,7 +42,7 @@ def summary(db, incident):
     rejected = {row.citizen_id for row in reports if row.citizen_id is not None and row.verification_status == "rejected"}
     return {field: getattr(incident, field) for field in ("id", *WORKFLOW_FIELDS, "created_at", "updated_at")} | {
         "report_count": len(reports), "reporting_citizens": len(owners),
-        "approvals": len(approved), "rejections": len(rejected)}
+        "approvals": len(approved), "rejections": len(rejected)} | policy_summary(db, incident)
 
 
 def candidates(db, complaint, user, *, include_all_reports=False):
@@ -82,7 +83,8 @@ def candidates(db, complaint, user, *, include_all_reports=False):
             reasons.append("distance unknown; confirm location before linking")
         match = {"incident_id": row.incident_id, "complaint_id": row.id, "similarity": round(score, 4),
                  "approximate_distance_m": round(distance, 1) if distance is not None else None,
-                 "reason": "; ".join(reasons), "linked": False}
+                 "reason": "; ".join(reasons), "linked": False,
+                 "category_match": source_category == target_category, "text_similarity": round(score, 4)}
         if row.incident_id not in best or best[row.incident_id]["similarity"] < score:
             best[row.incident_id] = match
     return sorted(best.values(), key=lambda match: (-match["similarity"], match["incident_id"]))[:10]
@@ -113,6 +115,11 @@ def sync_workflow(db, complaint, user, action, remarks=None):
         return
     if action in {"complaint_submitted", "incident_linked"}:
         return
+    if action == "resolution_submitted":
+        start_round(db, incident, user)
+    elif action in {"complaint_reopened", "citizen_reopen_requested"} or (
+            action == "citizen_verification" and complaint.verification_status == "rejected"):
+        mark_reopened(db, incident, user, "authority_reopen" if action == "complaint_reopened" else "rejected")
     db.flush()
     members = db.scalars(select(Complaint).where(Complaint.incident_id == incident.id)).all()
     for member in members:
@@ -130,7 +137,7 @@ def sync_workflow(db, complaint, user, action, remarks=None):
             for field in WORKFLOW_FIELDS:
                 setattr(member, field, getattr(complaint, field))
             member.assigned_department = complaint.assigned_department
-            member.verification_status = ("reopened" if action == "citizen_verification"
+            member.verification_status = ("reopened" if action in {"citizen_verification", "citizen_reopen_requested"}
                                           else complaint.verification_status)
         # Never expose another citizen's verification feedback in a sibling timeline.
         record(db, member, user, old_status, "Shared incident workflow updated",
@@ -139,9 +146,7 @@ def sync_workflow(db, complaint, user, action, remarks=None):
     for field in WORKFLOW_FIELDS:
         setattr(incident, field, getattr(complaint, field))
     if action == "citizen_verification" and complaint.verification_status == "approved":
-        owners = {row.citizen_id for row in members if row.citizen_id is not None}
-        approvals = {row.citizen_id for row in members if row.citizen_id is not None and row.verification_status == "approved"}
-        incident.status = "resolved" if owners and owners <= approvals else "verification_pending"
+        apply_quorum(db, incident, members, user)
     incident.updated_at = utc_now()
 
 
@@ -174,7 +179,9 @@ def link_report(db, complaint, target, user, reason):
     db.flush()
     if previous_incident is not None and previous_incident != target.id:
         remaining = db.scalar(select(Complaint.id).where(Complaint.incident_id == previous_incident).limit(1))
-        if remaining is None:
+        has_round_history = db.scalar(select(IncidentVerificationRound.id).where(
+            IncidentVerificationRound.incident_id == previous_incident).limit(1))
+        if remaining is None and has_round_history is None:
             empty_incident = db.get(Incident, previous_incident)
             if empty_incident is not None:
                 db.delete(empty_incident)

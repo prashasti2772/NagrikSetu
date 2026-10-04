@@ -4,12 +4,11 @@ Backend for citizen civic issue reporting, intelligent routing, transparent
 tracking, and community-verified resolution. Local text suggestions and a local
 help chatbot support the workflow; users and staff make the decisions.
 
-The current development/validation target is SQLite. Supabase TLS troubleshooting
-and production deployment are deferred. The PostgreSQL configuration reference
-below documents existing behavior, not a verified live deployment.
-The last observed Windows Supabase attempt failed with TLS certificate verification
-error 92 after loading the downloaded CA. That external connection remains unverified;
-no certificate or hostname verification bypass is used. SQLite development can continue.
+SQLite remains the working development database. PostgreSQL URL construction,
+verified pg8000 TLS configuration, and offline migration SQL are tested; a live
+production connection has not been verified in this pass because no process
+DATABASE_URL is configured. Live production PostgreSQL verification requires DATABASE_URL.
+Storage uses a separate HTTPS project URL/key and does not change the SQL database.
 
 The complete [frontend API contract](API_CONTRACT.md) includes authentication,
 roles, concrete request examples, response shapes, errors, and all frontend routes.
@@ -48,8 +47,8 @@ It does not return database URLs, credentials, or raw database errors.
 ## Database configuration
 
 The backend reads `DATABASE_URL` from the process environment. `.env.example`
-is a reference, not automatically loaded. Only optional Gemini, Brevo, and private
-Storage settings are read from `backend/.env`; process environment values take
+is a reference, not automatically loaded. Optional Gemini, Brevo, private
+Storage, and verification-window/quorum settings are read from `backend/.env`; process environment values take
 precedence. SQL database and JWT settings remain process-environment only.
 Missing, empty, or whitespace-only values use the existing absolute path
 `backend/nagriksetu.db`, regardless of the working directory.
@@ -127,8 +126,9 @@ has a 60-second per-email/purpose cooldown. Reset tokens are single-use and expi
 with the OTP. Password resets invalidate existing access tokens. When configured,
 registration, forgot-password, and email verification use the Brevo REST adapter
 over verified TLS. Without Brevo in development, no message is sent and no OTP is
-logged; API responses never contain OTPs. Email verification is advisory and never
-blocks login/reporting. The prototype includes per-process limits; use a shared
+logged; API responses never contain OTPs. Citizen email verification is advisory
+and never blocks reporting. Staff can optionally be required to verify their email
+before accessing protected work APIs (see closing-pass configuration below). The prototype includes per-process limits; use a shared
 ingress rate limiter for deployment-wide login and recovery abuse protection.
 
 ## Workflow and permissions
@@ -170,7 +170,7 @@ Possible same-issue candidates use local text/category similarity, recency, and
 Haversine distance where both coordinate pairs are available. Candidates are
 explanatory suggestions; only scoped staff can explicitly confirm consolidation.
 Linking never deletes reports or their histories. Shared incident updates propagate
-to linked reports. Each distinct reporting citizen must approve a resolution; any
+to linked reports. Resolution uses the explicit window/quorum policy below; a valid
 rejection reopens the shared incident. Location is optional; coordinates must be
 provided as a pair, and `location_text` is accepted as an address alias. Optional
 `location_accuracy_m`, `locality`, `area`, and `ward` are persisted.
@@ -216,6 +216,10 @@ Revision `0004_integrations` adds optional location fields, one incident per exi
 complaint (preserving IDs and workflow values), purpose-scoped OTP/email verification,
 and private evidence-object metadata. SQLite migration FK checks run before enforcement
 is restored.
+Revision `0005_verification_policy` stores resolution-round windows, quorum snapshots,
+closure/reopen outcomes and staff review reasons without deleting prior history.
+Revision `0006_identity` adds safe optional trust metadata to users; no identity
+numbers or raw documents are stored.
 Run schema upgrades once before starting multiple application workers. Existing string
 `assigned_department` values remain intact; admins assign department IDs to route them.
 
@@ -310,9 +314,10 @@ available, based on account state and active assignment count.
 
 Analytics accepts inclusive UTC creation-date filters `date_from` / `date_to`
 (`YYYY-MM-DD`). Every query follows the existing authority department/officer scope.
-Average resolution hours include only currently citizen-confirmed `resolved` reports
-with valid created_at/resolved_at values; the duration ends when staff submitted the
-resolution, excluding the citizen's confirmation delay. Missing samples return null
+Average resolution hours include currently `resolved` reports with valid
+created_at/resolved_at values, including quorum/staff-review closures; the duration
+ends when staff submitted the resolution, excluding review delay. This metric does
+not imply every reporter approved; use verification state and incident outcome. Missing samples return null
 and `resolution_sample_count=0`. Trends return observed dates, with no invented rows.
 
 Notifications are committed atomically with complaint submission, assignment, status
@@ -372,7 +377,8 @@ help. Public FAQ answers need no login. Complaint-specific answers require a bea
 token and an explicit complaint ID, and follow the same owner/staff scope as the API.
 Missing and unauthorized complaints both return 404. Responses contain an answer,
 topic, suggested prompts and an optional minimal complaint status snapshot.
-The chatbot never changes records or sends data to an external model.
+The chatbot never changes records. Complaint lookups remain local; optional Gemini
+receives sanitized draft/help text and validated submitted images, with local fallback.
 
 ## Prototype request limits
 
@@ -389,3 +395,147 @@ Counters reset on restart and are independent across workers/instances. This is 
 single-process prototype limiter, not deployment-wide abuse protection; use a shared
 free gateway/limiter when scaling. Redis is not required. Tests clear only in-memory
 limiter state between isolated cases.
+
+## Closing-pass workflow and optional integrations
+
+**Working now:** SQLite persistence/migrations, role-scoped complaint and incident
+workflows, notifications/history, local intelligence/fallback, optional trust metadata,
+and provider-safe readiness at `GET /health/ready`. That endpoint returns
+`{"status":"ok","database":{"provider":"sqlite","connected":true}}` or 503 when
+unavailable, without database URLs or exception details.
+
+**Optional:** private Supabase Storage, Brevo REST, Gemini and reverse geocoding need
+local operator configuration; all preserve the core text reporting workflow when
+unavailable. PostgreSQL remains the production target through process DATABASE_URL.
+No production data was migrated in this pass.
+
+**Pending external approval/implementation:** DigiLocker requester integration,
+trusted Aadhaar offline signature/QR validation, and BHASHINI network services.
+They are disabled; no endpoint or credential is invented. BHASHINI capability
+discovery includes ASR/NMT/TTS/OCR, audio/text language detection, transliteration,
+punctuation and voice preprocessing, all unavailable.
+
+**Next ML training phase:** [ml/README.md](ml/README.md) documents reviewed dataset
+ingestion, schema validation, conservative offline deduplication, deterministic
+group/pair-aware splits, TF-IDF baseline training/evaluation and versioned metrics.
+Only synthetic fixtures have been exercised. No production model, official dataset
+or performance score is claimed; the running API retains its existing local rules.
+
+### Verification window and quorum
+
+Each resolution starts a persisted round with defaults
+`VERIFICATION_WINDOW_HOURS=72` and `VERIFICATION_QUORUM_PERCENT=60`.
+The required count is `max(1, ceil(distinct active citizen reporters * percent / 100))`;
+the count, settings and deadline are snapshotted. One citizen gets one decision per
+round, regardless of how many reports they filed. All reports and historical votes
+remain preserved. Quorum closes the shared incident; silent reporters retain
+`pending` verification status. A nonresponding citizen can still reject before the
+original deadline, including after quorum closure.
+
+After expiry, nothing closes automatically. Scoped staff can call
+`POST /api/v1/authority/incidents/{incident_id}/finalize-verification` with a reason,
+but only with recorded resolution notes and resolution evidence. This records
+staff review, never invented citizen approval. Owners can use
+`POST /api/v1/complaints/{complaint_id}/reopen-request` with a reason after closure
+or expiry. A new resolution starts another round while retaining the old audit.
+These defaults are prototype application policy, not government policy.
+The [API contract](API_CONTRACT.md#exact-prototype-verification-policy) specifies
+the response fields, limits and exact transitions.
+
+### Optional trust and staff email policy
+
+Safe user metadata contains identity status/provider/verification time only.
+`GET /api/v1/users/me/verification` derives email trust and reports provider readiness.
+No Aadhaar numbers, biometrics or KYC documents are accepted or stored. Reporting
+does not require identity verification. DigiLocker and Aadhaar offline classes
+define an outcome boundary for future approved/trusted implementations; they do
+not contact government services or validate documents today.
+
+For an explicitly labelled local demo only, process `APP_ENV=development` plus
+`ENABLE_DEMO_IDENTITY=true` enables `POST /api/v1/users/me/verification/demo`
+with empty JSON. It records **Demo Verified Citizen**, with real
+`identity_verified=false`; it cannot replace an actual verified outcome.
+
+Public signup remains citizen-only. Admin/local-operator provisioning, active-account
+checks and department/officer scope govern staff access. Optional process
+`STAFF_REQUIRE_VERIFIED_EMAIL=true` requires staff to complete email OTP before
+work APIs, while leaving profile and email-verification endpoints available.
+An admin must independently approve the official identity/employment; email control
+alone is not evidence of government authorization. The default is false for
+compatibility with existing local accounts.
+
+### Optional reverse geocoding
+
+Authenticated `POST /api/v1/location/reverse` takes a coordinate pair and returns
+editable address hints. Configure process `GEOCODER_URL` as the full HTTPS reverse
+endpoint and `GEOCODER_USER_AGENT` as an identifying application/contact string.
+No default external endpoint is used. Missing/invalid settings and failed lookups
+return graceful unavailable results; complaint creation never invokes geocoding.
+
+The Nominatim-compatible adapter has a five-second timeout, bounded response/cache,
+one-hour positive cache, short failure cache, no redirects, and a per-process
+one-inflight/one-request-per-second gate. Public Nominatim additionally requires
+`GEOCODER_ALLOW_PUBLIC_NOMINATIM=true`, visible attribution, and compliance with its
+[usage policy](https://operations.osmfoundation.org/policies/nominatim/).
+Use one worker or an application-wide limiter with that public service; the local
+gate does not coordinate multiple workers. Provider hints never establish ward
+jurisdiction or override a user's location. Manual location remains supported.
+
+### Controlled live smoke commands
+
+Run from `backend`. Automated tests mock providers and never invoke these commands.
+The Storage command creates a tiny nonpersonal PNG, validates MIME/signature/size,
+checks the bucket is private, uploads with a random path, requests a five-minute
+signed URL, downloads it, and deletes/lists its test object to confirm cleanup.
+It never prints the signed URL, key or project URL. If deletion fails, it reports
+only the generated test object's path so an operator can remove it.
+
+```powershell
+.\.venv\Scripts\python.exe -m app.smoke storage --live
+```
+
+The closing-pass live attempt detected configuration but failed DNS resolution of
+the locally configured project host before upload. No object was created and
+upload/sign/delete remain unverified against that project. Compare the ignored
+`SUPABASE_URL` setting with the actual project URL, correct it locally, then rerun.
+The safe diagnostic code is `dns_resolution_failed`; provider HTTP rejections
+include only a status code. TLS verification is never bypassed.
+
+Brevo uses `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, and `BREVO_SENDER_NAME` over REST,
+never SMTP. Email-verification and password-reset OTPs are purpose-isolated, hashed,
+expiring and rate-limited. Existing mocked tests cover delivery failure and recovery.
+This pass found Brevo configuration but no explicit `BREVO_TEST_RECIPIENT`, so no
+real email was sent. To explicitly send **one demo OTP email** to an address you control:
+
+```powershell
+$recipientInput = Read-Host 'Test recipient email you control' -AsSecureString
+$env:BREVO_TEST_RECIPIENT = [System.Net.NetworkCredential]::new('', $recipientInput).Password
+try {
+    .\.venv\Scripts\python.exe -m app.smoke email --live
+} finally {
+    Remove-Item Env:BREVO_TEST_RECIPIENT -ErrorAction SilentlyContinue
+}
+```
+
+The demo code is not persisted as an account recovery token and is never printed.
+Provider acceptance is reported without recipient/code/key; check that mailbox
+separately to confirm delivery. No email is sent at import, startup or in tests.
+
+Live production PostgreSQL verification requires DATABASE_URL.
+Set it securely in the process as documented above, then run
+`python -m app.db.diagnose`; with provider backup/deployment approval, apply
+`python -m alembic upgrade head`, start Uvicorn and check `/health/db` and
+`/health/ready`. Offline SQL/model compatibility tests do not establish live
+credentials, network access or production migration success.
+
+### Closing-pass validation
+
+The complete SQLite suite passed **136 tests, 0 failures** after the closing-pass
+changes, preserving the original 95-test baseline. Coverage includes fresh and
+legacy schema upgrades, model/schema agreement, disposable migration round trips,
+PostgreSQL offline SQL/engine configuration, role restrictions, optional providers,
+verification policy/audit preservation, and offline ML preparation. App import and
+all 68 OpenAPI operation entries in API_CONTRACT.md were checked. Existing
+`0004_integrations` Column.copy deprecation warnings remain non-fatal.
+Live Storage and email/PostgreSQL limitations are reported above; mocked test
+success is not a claim of live provider verification.

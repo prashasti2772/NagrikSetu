@@ -80,6 +80,7 @@ suggestions, and chatbot lookups.
 | GET | `/` | No / public | No body | `message`, `docs`, `health` | None expected |
 | GET | `/health` | No / public | No body | `{"status":"ok"}` | None expected |
 | GET | `/health/db` | No / public | No body | `{"status":"ok","database":"connected"}` | 503 database unavailable |
+| GET | `/health/ready` | No / public | No body | `{"status":"ok","database":{"provider":"sqlite","connected":true}}`; provider can be `postgresql` | 503 with `status=unavailable`, connected=false; no connection URL |
 
 Interactive reference: `GET /docs`. Machine-readable schema: `GET /openapi.json`.
 
@@ -146,9 +147,12 @@ currently text, not a closed enum. Fetch department IDs instead of hardcoding th
 
 To reject a proposed resolution, send
 `{"resolved":false,"feedback":"The pothole is still present."}` to `/verify`.
-It becomes `status=reopened`, `verification_status=rejected`. Only a
-`verification_pending` complaint can be verified. Citizens cannot directly change
-status or reopen an accepted resolution; scoped staff can reopen it.
+It becomes `status=reopened`, `verification_status=rejected`. A citizen can respond
+once per resolution round, before its deadline, including after quorum closure if
+that citizen has not responded yet. A rejection reopens the shared incident. After
+the deadline (or after previously responding), an owner can use the reasoned
+`/reopen-request` endpoint below; it reopens the shared workflow and preserves audit
+history. See the explicit verification policy below.
 
 Evidence can be legacy/external HTTP(S) URL metadata or a private uploaded object.
 The upload endpoint accepts JPEG/PNG/WebP only, defaults to a 10 MiB maximum, ignores
@@ -179,7 +183,7 @@ also support scoped staff.
 | POST | `/api/v1/authority/complaints/{complaint_id}/resolve` | Yes / in-scope authority, admin | `{"resolution_notes":"Pothole filled and surface levelled.","evidence_url":"https://example.com/resolution.jpg"}` | Complaint and linked reports: `status=verification_pending`; resolution evidence is shared as per-report metadata | 401; 403; 404; 409 invalid current state; 422 |
 | POST | `/api/v1/authority/complaints/{complaint_id}/reopen` | Yes / in-scope authority, admin | No body | Complaint: `status=reopened`, `verification_status=reopened`, `resolved_at=null` | 401; 403; 404; 409 not resolved/verification pending; 422 |
 | GET | `/api/v1/authority/incidents` | Yes / authority, admin | Optional `status`, `offset`, `limit` | Scoped Incident aggregates | 401; 403; 422 |
-| GET | `/api/v1/authority/complaints/{complaint_id}/incident-candidates` | Yes / in-scope authority, admin | No body | Candidate `incident_id`, similarity, approximate distance, reason; no other report IDs/text | 401; 403; 404 |
+| GET | `/api/v1/authority/complaints/{complaint_id}/incident-candidates` | Yes / in-scope authority, admin | No body | Candidate `incident_id`, `complaint_id`, `similarity`, `text_similarity`, `approximate_distance_m`, `category_match`, `reason`, `linked=false` | 401; 403; 404 |
 | POST | `/api/v1/authority/complaints/{complaint_id}/incident` | Yes / in-scope authority, admin | `{"incident_id":12,"reason":"Same damaged road section and nearby location confirmed."}` | Updated individual Complaint with shared `incident_id` | 401; 403; 404; 409 invalid/empty target; 422 |
 | GET | `/api/v1/authority/analytics/summary` | Yes / authority, admin | No body; optional date query below | StatusCounts, `average_resolution_hours` (nullable), `resolution_sample_count` | 401; 403; 422 |
 | GET | `/api/v1/authority/analytics/categories` | Yes / authority, admin | No body; optional date query | Array of `category`, `total` | 401; 403; 422 |
@@ -201,13 +205,14 @@ create response exposes only suggested incident IDs/scores/reasons, not another
 complaint ID or text. There is no automatic merge. Staff must explicitly confirm a
 link with the incident POST above. Linking preserves both complaint IDs and their
 individual histories/evidence. The former incident is removed only if it has no
-remaining reports.
+remaining reports and no resolution-round audit history; empty historical incidents
+remain stored but are omitted from the active ledger.
 
 Assignment, progress, remarks, and resolution submitted on any member report update
-the shared incident and sibling report workflow. On resolution, each distinct
-reporting citizen must approve for the shared incident to become `resolved`; any
-citizen rejection reopens the incident. A citizen sees aggregate incident counts but
-not other reporters' names, report text, IDs, or verification feedback.
+the shared incident and sibling report workflow. Resolution starts the configurable
+verification round described below. A citizen sees aggregate incident counts but
+not other reporters' names, report text, IDs, or verification feedback. Staff detail
+returns retained reports only after incident scope checks.
 
 Authority officer listing defaults to `is_active=true`. Authorities list their
 own department; admins can supply `department=<id>` or omit it for all departments.
@@ -232,8 +237,9 @@ set `resolved` or bypass citizen verification.
 
 All analytics accept inclusive UTC complaint-creation dates, for example
 `?date_from=2026-10-01&date_to=2026-10-31`. Invalid/reversed ranges return 422.
-Resolution hours count currently citizen-confirmed resolved reports from creation
-to staff resolution submission, excluding citizen confirmation delay. No samples
+Resolution hours count currently resolved reports from creation to staff resolution
+submission, including quorum/staff-review closures and excluding the review delay.
+This metric alone does not prove citizen approval; inspect verification state/outcome. No samples
 means null average and sample count 0.
 
 ## ADMIN
@@ -320,8 +326,6 @@ choices, merge complaints, or close a case. Category, department, priority, and
 duplicate suggestions use local code without an API key or remote model. Optional
 Gemini is limited to chatbot responses and image-assisted draft descriptions.
 
-## CHATBOT
-
 ## LANGUAGE / BHASHINI
 
 | Method | Endpoint | Auth required / allowed role | Request body example | Important response fields | Typical errors |
@@ -331,7 +335,10 @@ Gemini is limited to chatbot responses and image-assisted draft descriptions.
 
 BHASHINI remains disabled pending approval. These routes make no network calls,
 accept no provider credentials, and do not claim to perform speech recognition,
-translation, synthesis, OCR, language detection, or transliteration.
+translation, synthesis, OCR, language detection, or transliteration. Capabilities
+include `asr`, `nmt`, `tts`, `ocr`, `language_detection` (legacy alias),
+`audio_language_detection`, `text_language_detection`, `transliteration`,
+`punctuation`, and `voice_preprocessing`; all report unavailable.
 
 ## CHATBOT
 
@@ -356,8 +363,9 @@ Unauthenticated personal lookups return 401.
 Local FAQ knowledge covers reporting, tracking, statuses, categories, resolution
 verification, rejection/reopening, authority assignment, and basic help. Answers
 include suggested follow-up prompts. It does not submit/modify complaints, store
-conversations, contact staff, or call an external LLM. It uses rules/project
-knowledge and can ask users to rephrase unsupported questions.
+conversations, or contact staff. The local fallback uses rules/project knowledge
+and can ask users to rephrase unsupported questions. Optional Gemini behavior is
+separate and described below.
 
 When `GEMINI_API_KEY` is configured in the backend process or ignored `backend/.env`,
 the message endpoint may provide a multilingual answer and `/analyze` may describe an
@@ -374,3 +382,104 @@ automatically creates a complaint; the user must review and submit the returned 
 Chatbot and analysis each have a per-peer counter using `RATE_LIMIT_INTELLIGENCE`
 (default 20 per 60 seconds). Limits are per process and reset on restart; they are
 not deployment-wide.
+
+## Verification rounds, incident detail, optional trust and location
+
+| Method | Endpoint | Auth / scope | Request | Response / errors |
+| --- | --- | --- | --- | --- |
+| GET | `/api/v1/authority/incidents/{incident_id}` | Authority in incident department or explicitly assigned officer; admin globally | Optional `offset=0&limit=20` (1-100) for member reports | `{incident: Incident, reports: Complaint[]}`; reports ordered by ID; aggregate `report_count` supplies total; 401/403/404/422 |
+| POST | `/api/v1/authority/incidents/{incident_id}/finalize-verification` | Same scoped staff | `{"reason":"Evidence reviewed after the full verification window"}` | Incident; 409 before deadline, wrong state, or missing notes/resolution evidence; 422 blank/overlong reason; 401/403/404 |
+| POST | `/api/v1/complaints/{complaint_id}/reopen-request` | Owning citizen only | `{"reason":"The reported problem remains after the repair"}` | Complaint with reopened shared workflow; permitted from resolved/verification_pending, including after expiry; 409 wrong state, 422 invalid reason; 401/403/404 |
+| GET | `/api/v1/users/me/verification` | Citizen only | No body | Safe trust state and provider availability; 401/403 |
+| POST | `/api/v1/users/me/verification/demo` | Citizen only; development demo flag required | Empty JSON `{}` only | Trust state labelled Demo Verified Citizen; 503 disabled; 409 already actually identity-verified; 422 extra data (no submitted document/identifier echoed); 401/403 |
+| POST | `/api/v1/location/reverse` | Any authenticated active account | `{"latitude":19.076,"longitude":72.8777}` | Optional address hints below; 401/403/422; provider failures return 200 with available=false |
+
+Reasons are trimmed, nonblank strings of 1-1,000 characters. Incident workflow
+actions still use a member complaint ID; the new detail route supplies those IDs.
+The citizen incident route remains aggregate-only.
+
+### Exact prototype verification policy
+
+This is application policy, not government policy. Each staff resolution starts
+a new persisted round. Defaults are a **72-hour window** and **60% approval quorum**,
+configurable through `VERIFICATION_WINDOW_HOURS` (1-720) and
+`VERIFICATION_QUORUM_PERCENT` (1-100). Each round snapshots its settings, deadline,
+and distinct active citizen reporter count. Required approvals are
+`max(1, ceil(eligible_reporters * quorum_percent / 100))`: one of one, two of two,
+two of three, five of eight under defaults. No-owner/inactive-only cases require
+staff review after expiry.
+
+Each distinct reporter has one decision per round even if they filed several reports.
+Meeting quorum closes the incident and remaining reports, retaining nonresponses as
+`verification_status=pending`; silence is never recorded as approval. A reporter
+who has not yet responded can still reject before the original deadline, reopening
+even an incident closed by quorum. An approval on one report may show that report
+as resolved before the shared incident reaches quorum; use the Incident status for
+the shared workflow.
+
+Expiry does **not** automatically approve or close a case. Scoped staff can explicitly
+finalize after the deadline with resolution notes, resolution evidence (URL metadata
+or a stored resolution object), and a recorded review reason. A valid rejection or
+owner reopen request reopens the incident. Owners can request reopening after the
+deadline or after a prior response. A new staff resolution starts a fresh round;
+previous rounds and decision/feedback timeline events remain stored. Current response
+fields reset for the new round; the timeline retains past individual responses.
+Legacy pending resolutions use the original resolution timestamp when creating a
+round on their next workflow action.
+
+Incident responses add:
+`verification_rule`, `verification_window_hours`, `verification_quorum_percent`,
+`verification_started_at`, `verification_deadline`,
+`verification_approvals_required`, `verification_eligible_reporters`,
+`verification_outcome`, `verification_closed_at`, `verification_reopened_at`,
+and `verification_review_required`. Timestamps/outcome are nullable. Outcomes include
+`quorum`, `staff_review`, `rejected`, `rejected_after_quorum`,
+`authority_reopen`, and superseded rounds. Never label staff closure as citizen approval.
+
+Candidate responses explain normalized text, category compatibility, recency, open
+state and optional distance. `text_similarity` aliases the uncalibrated `similarity`
+score (0-1); `category_match` reports exact normalized category equality.
+Coordinates within 200 m qualify for incident suggestions; absent coordinates
+produce null distance and an explicit location-check reason. Create responses omit
+other citizens' complaint IDs and text. `linked=false` denotes a suggestion;
+actual membership is the report's `incident_id`, `incident_link_method`,
+`incident_link_reason`, `incident_link_score`, and `incident_link_distance_m`.
+These are suggestions for staff review, never accuracy figures or automatic merges.
+
+### Optional identity state
+
+Example shape for an unverified citizen:
+
+```json
+{"status":"unverified","email_verified":false,"identity_verified":false,"provider":null,"verified_at":null,"is_demo":false,"display_label":"Unverified Citizen","providers":[{"provider":"digilocker","available":false,"status":"pending_external_approval"},{"provider":"aadhaar_offline","available":false,"status":"trusted_offline_validation_not_implemented"},{"provider":"demo","available":false,"status":"disabled"}]}
+```
+
+Possible states are `unverified`, `email_verified`, `identity_verified`, and
+`demo_verified`. The last is always labelled **Demo Verified Citizen** with
+`is_demo=true` and `identity_verified=false`. Demo requires process settings
+`APP_ENV=development` and `ENABLE_DEMO_IDENTITY=true`. No route grants real
+government identity verification. DigiLocker requester approval/credentials and
+trusted offline Aadhaar signature/QR validation remain external/future work; no
+document, Aadhaar number, biometrics, token or KYC upload endpoint exists.
+Reporting never depends on either provider.
+
+The optional process flag `STAFF_REQUIRE_VERIFIED_EMAIL=true` restricts staff
+work APIs until email verification succeeds. Profile GET/PATCH and the two
+email-verification actions remain accessible so staff can complete verification.
+It does not restrict citizen reporting. Admin provisioning and department/officer
+scope still apply; mailbox verification alone does not prove official employment.
+
+### Reverse-geocoding hints
+
+The response contains `available`, `status`, `location_text`, `locality`,
+`area`, `ward`, `source`, `cached`, `attribution`. Status is `ok`,
+`not_configured`, `unavailable`, `rate_limited`, or `not_found`; address fields
+are nullable. Calls are explicitly requested, never made during complaint creation.
+A missing provider or failed lookup never blocks reporting. Preserve the user's
+pin and editable address; respect complaint field length limits and display attribution.
+
+The backend requires a configured HTTPS Nominatim-compatible reverse endpoint and
+identifying User-Agent. Its cache and one-request-per-second gate are per process;
+public Nominatim additionally requires operator opt-in. Coordinates are sent only
+to the configured provider for the requested lookup. No Google Maps dependency or
+municipal jurisdiction verification is implied.

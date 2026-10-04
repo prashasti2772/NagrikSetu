@@ -1,0 +1,5 @@
+﻿# Local source data, manifests and trained artifacts must not be committed.
+*.jsonl
+artifacts/
+datasets/
+__pycache__/

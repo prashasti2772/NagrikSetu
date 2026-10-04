@@ -6,7 +6,7 @@ from app.models.domain import Incident
 from app.models.complaint import Complaint, ComplaintStatus
 from app.routers.workflow import DB, Authority, get_complaint, save
 from app.schemas.complaint import ComplaintRead
-from app.schemas.incident import IncidentRead, IncidentLink, IncidentCandidate
+from app.schemas.incident import IncidentRead, IncidentLink, IncidentCandidate, IncidentDetail
 from app.services.incidents import incident_scope, summary, candidates, link_report
 
 router = APIRouter(prefix="/api/v1", tags=["incidents"])
@@ -29,6 +29,16 @@ def list_incidents(db: DB, user: Authority, status: ComplaintStatus | None = Non
         statement = statement.where(Incident.status == status)
     rows = db.scalars(statement.order_by(Incident.updated_at.desc(), Incident.id.desc()).offset(offset).limit(limit)).all()
     return [summary(db, row) for row in rows]
+
+@router.get("/authority/incidents/{incident_id}", response_model=IncidentDetail)
+def incident_detail(incident_id: int, db: DB, user: Authority,
+                    offset: int = Query(0, ge=0), limit: int = Query(20, ge=1, le=100)):
+    incident = db.scalar(select(Incident).where(Incident.id == incident_id, incident_scope(user)))
+    if incident is None:
+        raise HTTPException(404, "Incident not found or unavailable")
+    reports = db.scalars(select(Complaint).where(Complaint.incident_id == incident.id)
+                         .order_by(Complaint.id).offset(offset).limit(limit)).all()
+    return {"incident": summary(db, incident), "reports": reports}
 
 @router.get("/authority/complaints/{complaint_id}/incident-candidates", response_model=list[IncidentCandidate])
 def incident_candidates(complaint_id: int, db: DB, user: Authority):

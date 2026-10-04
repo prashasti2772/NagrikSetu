@@ -33,7 +33,8 @@ def create_complaint(payload: ComplaintCreate, db: Database, user = Depends(requ
     db.flush()
     ensure_incident(db, complaint)
     candidate_summaries = [SameIncidentCandidate.model_validate({key: candidate[key] for key in
-                            ("incident_id", "similarity", "approximate_distance_m", "reason")})
+                            ("incident_id", "similarity", "approximate_distance_m", "reason",
+                             "linked", "category_match", "text_similarity")})
                            for candidate in incident_candidates(db, complaint, user, include_all_reports=True)]
     save_suggestion(db, complaint)
     if complaint.image_url:

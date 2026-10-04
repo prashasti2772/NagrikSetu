@@ -223,7 +223,7 @@ class MigrationTests(unittest.TestCase):
             e=build_engine('sqlite:///'+folder+'/fresh.db')
             initialize_database(e)
             with e.connect() as c:
-                self.assertEqual(c.scalar(text('SELECT version_num FROM alembic_version')),'0004_integrations')
+                self.assertEqual(c.scalar(text('SELECT version_num FROM alembic_version')),'0006_identity')
                 self.assertEqual(compare_metadata(MigrationContext.configure(c),Base.metadata),[])
             cfg=migration_config()
             with e.begin() as c:
@@ -237,14 +237,14 @@ class MigrationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             e=build_engine('sqlite:///'+folder+'/existing.db')
             tables=[t for t in Base.metadata.sorted_tables if t.name not in {
-                'notifications','complaint_evidence','complaint_suggestions','incidents'}]
+                'notifications','complaint_evidence','complaint_suggestions','incidents','incident_verification_rounds'}]
             snapshot = MetaData()
             for table in tables:
                 table.to_metadata(snapshot)
             snapshot.tables['complaints'].c.resolved_at.type = TIMESTAMP()
             # Freeze the legacy fixture rather than including later model additions.
             for table_name, names in {
-                'users': ['email_verified'],
+                'users': ['email_verified','identity_status','identity_provider','identity_verified_at'],
                 'password_otps': ['purpose'],
                 'complaints': ['location_accuracy_m','locality','area','ward','incident_id',
                     'incident_link_method','incident_link_reason','incident_link_score','incident_link_distance_m'],
@@ -296,7 +296,7 @@ class MigrationTests(unittest.TestCase):
                 connection.execute(text("INSERT INTO complaint_evidence (complaint_id,image_url,evidence_type,uploaded_at,uploaded_by) VALUES (501,'https://example.com/old-evidence.jpg','report',CURRENT_TIMESTAMP,501)"))
             initialize_database(e)
             with e.connect() as connection:
-                self.assertEqual(connection.scalar(text('SELECT version_num FROM alembic_version')),'0004_integrations')
+                self.assertEqual(connection.scalar(text('SELECT version_num FROM alembic_version')),'0006_identity')
                 self.assertEqual(connection.execute(text('SELECT id,title,incident_id FROM complaints WHERE id=501')).one(),(501,'Existing report',501))
                 self.assertEqual(connection.scalar(text('SELECT remarks FROM complaint_status_history WHERE complaint_id=501')),'preserve this timeline')
                 self.assertEqual(connection.scalar(text('SELECT image_url FROM complaint_evidence WHERE complaint_id=501')),'https://example.com/old-evidence.jpg')

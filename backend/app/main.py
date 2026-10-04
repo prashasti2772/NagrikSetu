@@ -35,3 +35,8 @@ for router_module in (admin, analytics, notifications, intelligence, evidence, c
 @app.get("/", tags=["root"])
 def root():
     return {"message": settings.app_name, "docs": "/docs", "health": "/health"}
+
+# Closing-pass provider and workflow routes.
+from app.routers import verification, identity, geocoding
+for provider_router in (verification.router, identity.router, geocoding.router):
+    app.include_router(provider_router)

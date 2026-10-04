@@ -49,6 +49,9 @@ class ComplaintStatusUpdate(BaseModel):
 
 
 class SameIncidentCandidate(BaseModel):
+    linked: bool = False
+    category_match: bool = False
+    text_similarity: float = Field(default=0, ge=0, le=1)
     incident_id: int
     similarity: float = Field(ge=0, le=1)
     approximate_distance_m: float | None

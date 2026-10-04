@@ -33,10 +33,10 @@ frontend uses another origin. In development, an omitted `JWT_SECRET` generates
 a temporary secret for each backend process, so sign in again after a restart or
 reload. A stable secret can be configured in the backend environment only.
 
-Supabase is not required for frontend development. Live PostgreSQL connectivity
-remains unverified; the last user-terminal diagnostic reported TLS certificate
-rejection, code 92. SSL verification remains enabled. Do not put database URLs,
-database passwords, signing secrets, or CA certificates in frontend configuration.
+Supabase is not required for frontend development. Live production PostgreSQL
+verification requires DATABASE_URL. Verified TLS remains enabled. Do not put database
+URLs, database passwords, signing secrets, or CA certificates in frontend configuration.
+`GET /health/ready` reports only the database provider and connectivity.
 
 ## Optional demo accounts
 
@@ -111,60 +111,126 @@ objects or arrays, with no `data` wrapper. Lists use `offset` and `limit`.
 Profile settings can update only the signed-in user's `full_name` and `phone`
 through `PATCH /api/v1/auth/me`; role and department changes remain admin-managed.
 
-## Wire the screens
 
-| Screen | Main APIs |
+## Complete screen-to-API implementation map
+
+All paths below are relative to `/api/v1` unless marked otherwise. Use the full
+methods, request fields, permissions and errors in [API_CONTRACT.md](API_CONTRACT.md).
+No UI source was changed in this pass.
+
+### Citizen and public surfaces
+
+| Screen / flow | Exact backend support and frontend responsibility |
 | --- | --- |
-| Citizen dashboard and reports | `/api/v1/users/me/dashboard`, `/api/v1/users/me/complaints`, `/api/v1/complaints` |
-| Profile and settings | `GET /api/v1/auth/me`, `PATCH /api/v1/auth/me` |
-| Complaint detail and history | `/api/v1/complaints/{id}`, `/api/v1/complaints/{id}/timeline`, `/api/v1/complaints/{id}/incident`, `/api/v1/complaints/{id}/evidence` |
-| Citizen resolution review | `POST /api/v1/complaints/{id}/verify` with `resolved` and optional `feedback` |
-| Authority queue and work | `/api/v1/authority/dashboard`, `/api/v1/authority/complaints`, `/api/v1/authority/officers`, `/api/v1/authority/incidents`; complaint actions `assign`, `status`, `remarks`, `resolve`, `reopen`, and explicit incident linking |
-| Verification queue | `/api/v1/authority/complaints?status=verification_pending` |
-| Admin accounts and routing | `/api/v1/admin/users`, `/api/v1/admin/authorities`, `/api/v1/admin/officers`, `/api/v1/admin/departments` |
-| Authority/admin charts | `/api/v1/authority/analytics/{summary,categories,departments,priorities,trends,recent}` — choose one suffix |
-| Evidence upload/access | Multipart `POST /api/v1/complaints/{id}/evidence/upload`; fetch short-lived private URL from `GET /api/v1/complaints/{id}/evidence/{evidence_id}/access` |
-| Notifications | `/api/v1/notifications` and documented read actions |
-| Language capability fallback | `GET /api/v1/language/capabilities`; authenticated `POST /api/v1/language/translate` returns original text unchanged while BHASHINI approval is pending |
-| Local ML assistance | `POST /api/v1/intelligence/analyze-complaint` |
-| Support chatbot | `POST /api/v1/chatbot/message` (JSON FAQ/status) and `POST /api/v1/chatbot/analyze` (multipart draft/image suggestions) |
+| Home | Public explanatory content; `GET /departments` supplies active civic categories. No invented public complaint feed/counts; live counts require authorized dashboards. |
+| Citizen Login | `POST /auth/login`, then `GET /auth/me`; route only citizens into citizen surfaces. |
+| Citizen Signup | `POST /auth/register` creates citizens only; never send role/department. |
+| Registration/email OTP | Registration sends when Brevo is configured; `POST /auth/request-email-verification`, `POST /auth/verify-email`. Keep reporting available when unverified. |
+| Forgot Password / Reset OTP | `POST /auth/forgot-password`, `POST /auth/verify-otp`, `POST /auth/reset-password`; keep generic issuance response, respect cooldown/429, clear old session after reset. |
+| Report Issue | `POST /complaints`; optional `POST /intelligence/analyze-complaint` or `POST /chatbot/analyze` prepares editable suggestions. User explicitly confirms submission. |
+| Map/location pin | Optional paired coordinates, accuracy, location_text/locality/area/ward in complaint POST; optional authenticated `POST /location/reverse` for editable hints. Manual address works without permission/geocoder. |
+| Image evidence | After successful complaint creation, multipart `POST /complaints/{id}/evidence/upload`; list `GET /complaints/{id}/evidence`; obtain private URL via `GET /complaints/{id}/evidence/{evidence_id}/access`. Preserve the created complaint if upload fails; allow retry. |
+| Voice/multilingual entry | `GET /language/capabilities` controls availability. `POST /language/translate` preserves text while disabled. Do not label text as translated or expose working ASR/TTS buttons until capability is available; always offer typed Unicode text. |
+| Track Complaint | Authenticated `GET /complaints/{id}` and `GET /complaints/{id}/timeline`; own report only, no public lookup by ID. |
+| Citizen Dashboard | `GET /users/me/dashboard` and `GET /users/me/complaints`. |
+| My Complaints | `GET /users/me/complaints?offset=0&limit=20`, individual reports retained even when incidents are shared. |
+| Complaint Detail | `GET /complaints/{id}`, `/timeline`, `/evidence`, `/incident` (all under that complaint); aggregate incident only, no other citizens' reports. |
+| Resolution Verification / Reopen | `POST /complaints/{id}/verify` with resolved/feedback during the round; `POST /complaints/{id}/reopen-request` with reason after closure/expiry or prior response. Display incident deadline, quorum, pending response and closure basis. |
+| Categories | `GET /departments`; categories are text, not hardcoded department IDs. |
+| Notifications | `GET /notifications`, `PATCH /notifications/{id}/read`, `PATCH /notifications/read-all`; pull-based, no websocket/push claim. |
+| Profile | `GET /auth/me`, `PATCH /auth/me` (full_name/phone only); email verification through auth endpoints. |
+| Help/Chatbot | `POST /chatbot/message` for public FAQ or scoped authenticated complaint lookup; optional multipart `POST /chatbot/analyze` for draft/image assistance. |
+| Language selection/preferences | Client-owned locale preference; `GET /language/capabilities` for service status. No server preference endpoint; translation availability is independent of UI locale. |
+| About | Static project content; no API needed and no government-integration claims. |
+| Contact / FAQ | Static published contact/help links and local FAQ chatbot; no contact-ticket submission endpoint or invented support email. |
+| Optional Verified Citizen | `GET /users/me/verification`; email trust works. DigiLocker/offline Aadhaar show unavailable state. `POST /users/me/verification/demo` with {} only when explicitly enabled in development, visibly labelled Demo Verified Citizen. Never request identity documents. |
 
-Use the contract for each action's method and fields. Fetch active departments
-from `GET /api/v1/departments` instead of hardcoding IDs. Citizens see their own
-reports; authority access follows department/officer assignments; admins have
-global access. UI visibility supplements the backend's authorization checks.
+### Authority and admin surfaces
 
-Statuses are `submitted`, `under_review`, `assigned`, `in_progress`,
-`verification_pending`, `resolved`, and `reopened`. Staff resolution submits a
-complaint for citizen verification; approval becomes `resolved`, while rejection
-becomes `reopened`. Verification values are `pending`, `approved`, `rejected`, and
-`reopened`. Severity and priority values are `low`, `medium`, `high`, `critical`.
-Use dedicated resolve/verify/reopen actions for these transitions.
+| Screen / flow | Exact backend support and frontend responsibility |
+| --- | --- |
+| Dedicated Authority Login | Separate visual entry, same `POST /auth/login` and `GET /auth/me`; require role authority/admin, never infer role from email/domain. |
+| Authority Dashboard | `GET /authority/dashboard`; department/officer scope enforced server-side. |
+| All Complaints / Incident Ledger | `GET /authority/complaints` with documented filters; `GET /authority/incidents` for shared workflows. Report counts and incident counts are different concepts. |
+| Incident/Complaint Detail | `GET /authority/incidents/{incident_id}?offset=0&limit=20` returns aggregate incident plus paginated retained reports. `GET /authority/complaints/{id}` and shared timeline/evidence routes give report detail. |
+| Assignment / Routing | `PATCH /authority/complaints/{id}/assign`; choose department/officer from lists. Initial unassigned routing and cross-department transfers require admin. `PATCH .../status`, `POST .../remarks` track progress. |
+| Confirm same incident | `GET /authority/complaints/{id}/incident-candidates`; explicit `POST /authority/complaints/{id}/incident` with incident_id/reason. Show text similarity, category match, distance/reasons as suggestions, never accuracy. |
+| Department Dashboard / workload | Scoped `GET /authority/dashboard`, `/authority/complaints`, `/authority/officers`; admin `GET /admin/officers` supplies workload/availability. No separate redundant department-dashboard endpoint needed. |
+| Resolution Evidence | Multipart `POST /complaints/{id}/evidence/upload` with evidence_type=resolution; `POST /authority/complaints/{id}/resolve` with resolution_notes and optional evidence_url. Upload metadata is shared with linked reports. |
+| Verification/Reopen Audit | `GET /authority/incidents/{id}`, member `GET /complaints/{id}/timeline`; queue `GET /authority/complaints?status=verification_pending`. After expiry, `POST /authority/incidents/{id}/finalize-verification` with reason and existing resolution evidence. `POST /authority/complaints/{id}/reopen` reopens. |
+| Analytics | `GET /authority/analytics/summary`, `categories`, `departments`, `priorities`, `trends`, `recent`; optional UTC date filters. Show empty/null results honestly. |
+| Officers | `GET /authority/officers`; admins use `GET /admin/officers`, `POST /admin/authorities`, `PATCH /admin/users/{id}`. Secure admin provisioning only; no self-service staff signup. |
+| Departments | `GET /departments`; admin `GET/POST /admin/departments`, `PATCH /admin/departments/{id}`. |
+| Notifications | Same own-notification GET/read actions as citizens. |
+| Profile / Settings | `GET/PATCH /auth/me`; editable name/phone only. If staff verified-email policy is enabled, allow email OTP completion before work APIs. Admin controls department/active status; locale/display preferences remain client-owned. |
 
-ML suggestions do not replace the citizen's selected category or priority. Every
-citizen report remains an individual record; candidate same-issue reports are never
-merged automatically. Authorities explicitly consolidate confirmed reports under an
-incident. Shared incident resolution waits for each distinct reporting citizen to
-approve; a rejection reopens the shared workflow. Complaint location is optional;
-send latitude and longitude together when available, with optional accuracy/locality/
-area/ward, and `location_text` as an address alias. Chatbot replies do not change
-complaint state. OTP codes are never logged; configured Brevo delivers them over REST.
-All API times represent UTC; see the contract for timestamp format details.
+There are no missing endpoints for these defined complaint/incident flows. Static
+pages and client locale settings need no backend route. A contact-ticket service,
+saved server-side language preferences, external push transport, refresh tokens,
+or a forced staff first-login password change would be new product scope.
 
-The chatbot analyze endpoint accepts optional text, an optional JPEG/PNG/GIF/WebP
-image (5 MB maximum), optional coordinates, and an optional permitted complaint ID;
-include at least text or an image. Send it as `multipart/form-data`. It returns an
-editable title/description draft and the same local intelligence suggestions. The
-response always sets `requires_user_confirmation` to true; it never submits a
-complaint. Configure `GEMINI_API_KEY` only in the backend environment or ignored
-`backend/.env`; `GEMINI_MODEL` is optional. Without a working Gemini service, local
-FAQ and text-based draft behavior remains available. Local fallback does not inspect
-image pixels and asks for a written description instead.
+## Workflow and evidence presentation
 
-Private binary evidence uploads require `SUPABASE_URL` and `SUPABASE_SECRET_KEY` for
-the private `SUPABASE_STORAGE_BUCKET` (default `complaint-evidence`). Without these
-optional settings, the backend still starts and legacy URL evidence remains available;
-private uploads return 503. Keep SQL `DATABASE_URL` separate from the Storage URL/key.
-BHASHINI remains disabled pending approval; its capability and text fallback routes
-do not call a provider. The capability endpoint reports all provider operations as
-unavailable; authenticated translate preserves the exact submitted Unicode text.
+Report statuses are `submitted`, `under_review`, `assigned`, `in_progress`,
+`verification_pending`, `resolved`, `reopened`. Current verification values
+are `pending`, `approved`, `rejected`, `reopened`. Severity/priority values
+are `low`, `medium`, `high`, `critical`. Use dedicated actions for resolution,
+verification and reopening; direct status PATCH cannot bypass them.
+
+Every citizen report remains stored. Confirmed consolidation shares one incident
+workflow; it does not hide or discard individual submissions. Defaults are a
+72-hour round and 60% approval quorum rounded up, minimum one approval, against
+the active reporter count at resolution. Configured values and deadline come
+from the incident response; never hardcode the defaults in UI logic.
+Quorum closes the shared incident while nonresponses stay pending. A reporter who
+has not responded can reject before the deadline even after quorum closure.
+After expiry staff must explicitly review existing notes/evidence and record a
+reason to close; no response is not approval. Owners retain a reasoned reopen action.
+Show staff-review closure separately from citizen approval; use the timeline for
+past responses/rounds. One citizen's report can be approved before the incident
+reaches quorum, so display both statuses.
+
+Location is optional. MapLibre/Leaflet/OpenStreetMap can render the map later;
+no Google Maps dependency is required. Reverse-geocoder hints may be unavailable
+and do not verify an authority jurisdiction. Keep typed address/pin editable,
+send coordinate pairs together, respect contract length limits, and display
+returned attribution. Never block a report on location permission.
+
+The chatbot analyze route takes optional text and/or a validated JPEG/PNG/GIF/WebP
+image (5 MiB limit), optional coordinates and permitted complaint reference.
+Its `requires_user_confirmation=true` response is a draft. Optional Gemini
+failure falls back to local text suggestions; local code does not inspect image pixels.
+Persistent evidence uploads accept JPEG/PNG/WebP up to 10 MiB by default
+(they do not accept GIF). Display upload progress/failure separately from complaint
+success. Private signed links expire in five minutes; request new access links
+after expiry and do not save them as permanent public image URLs.
+
+## Availability and external setup
+
+Working: SQLite, auth/OTP contract, scoped complaint/incident lifecycle, optional
+trust metadata, notifications, local intelligence, and provider fallbacks.
+Optional: configured Brevo, private Storage, Gemini, reverse geocoding.
+The closing-pass Storage attempt was blocked by DNS of the configured project URL
+before upload; the operator must correct that local setting and rerun the README
+smoke command. Brevo's live test requires an explicitly selected recipient.
+Neither blocks frontend development against the core SQLite APIs/mocked errors.
+
+Pending: actual DigiLocker requester approval/integration, trusted offline Aadhaar
+validation and BHASHINI approved service configuration. Never present a demo as
+government verification, collect Aadhaar/KYC data, or suggest identity is required
+for reporting. The offline ML/data tooling is ready for a separate reviewed dataset
+and training phase; no production accuracy is claimed.
+
+## One Civic Vanguard design system
+
+Use deep civic navy for structure/navigation, white or light neutral surfaces,
+saffron/orange for primary interaction, and emerald green for verified/resolved
+states. Use the same typography, spacing, controls, validation, cards and status
+badges across both surfaces. Pair colors with readable labels/icons; demo trust
+must say **Demo Verified Citizen** rather than using a real-verification badge.
+
+Citizen layouts can emphasize approachable reporting and progress; authority
+layouts can use denser tables, queues and filters. They remain one product with
+shared components and visual language. Communicate people, civic infrastructure,
+intelligent routing, transparency and community verification through the content
+and information hierarchy. No frontend implementation is included in this pass.

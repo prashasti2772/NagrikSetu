@@ -26,6 +26,9 @@ class User(Base):
     department_id: Mapped[int | None] = mapped_column(ForeignKey("departments.id"))
     token_version: Mapped[int] = mapped_column(default=0)
     email_verified: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    identity_status: Mapped[str] = mapped_column(String(30), default="unverified", server_default="unverified")
+    identity_provider: Mapped[str | None] = mapped_column(String(50))
+    identity_verified_at: Mapped[datetime | None] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now)
 
@@ -114,3 +117,20 @@ class ComplaintSuggestion(Base):
     recommended_department_id: Mapped[int | None] = mapped_column(ForeignKey("departments.id"))
     model_version: Mapped[str] = mapped_column(String(50))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+class IncidentVerificationRound(Base):
+    __tablename__ = "incident_verification_rounds"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    incident_id: Mapped[int] = mapped_column(ForeignKey("incidents.id"), index=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime)
+    deadline: Mapped[datetime] = mapped_column(DateTime)
+    window_hours: Mapped[int] = mapped_column(Integer)
+    quorum_percent: Mapped[int] = mapped_column(Integer)
+    eligible_reporters: Mapped[int] = mapped_column(Integer)
+    approvals_required: Mapped[int] = mapped_column(Integer)
+    created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    closed_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    reopened_at: Mapped[datetime | None] = mapped_column(DateTime)
+    outcome: Mapped[str | None] = mapped_column(String(40))
+    review_reason: Mapped[str | None] = mapped_column(Text)

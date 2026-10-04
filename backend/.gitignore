@@ -7,3 +7,16 @@ __pycache__/
 *.db
 *.db-*
 *.sqlite*
+
+# Local certificates/keys, backups and uploaded or generated artifacts.
+*.crt
+*.pem
+*.key
+*.p12
+*.pfx
+*.bak
+backups/
+uploads/
+.pytest_cache/
+.coverage
+htmlcov/

@@ -207,8 +207,8 @@ def reopen(complaint_id: int, db: DB, user: Authority):
 @router.post("/complaints/{complaint_id}/verify", response_model=ComplaintRead)
 def verify_complaint(complaint_id: int, payload: Verification, db: DB, user: Citizen):
     c = get_complaint(db, complaint_id, user)
-    if c.status != "verification_pending":
-        raise HTTPException(409, "Complaint is not awaiting verification")
+    from app.services.verification import validate_vote
+    validate_vote(db, c)
     old = c.status
     c.status = ComplaintStatus.resolved if payload.resolved else ComplaintStatus.reopened
     c.verification_status = "approved" if payload.resolved else "rejected"

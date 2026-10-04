@@ -7,7 +7,8 @@ LanguageTag = Annotated[str, StringConstraints(
     strip_whitespace=True, min_length=2, max_length=35,
     pattern=r"^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$",
 )]
-CapabilityName = Literal["asr", "nmt", "tts", "ocr", "language_detection", "transliteration"]
+CapabilityName = Literal["asr", "nmt", "tts", "ocr", "language_detection", "transliteration",
+                         "audio_language_detection", "text_language_detection", "punctuation", "voice_preprocessing"]
 
 
 class LanguageCapability(BaseModel):

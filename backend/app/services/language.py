@@ -10,7 +10,8 @@ from app.schemas.language import (
     LanguageCapabilities, LanguageCapability, TranslationFallback, TranslationRequest,
 )
 
-CAPABILITIES = ("asr", "nmt", "tts", "ocr", "language_detection", "transliteration")
+CAPABILITIES = ("asr", "nmt", "tts", "ocr", "language_detection", "transliteration",
+                "audio_language_detection", "text_language_detection", "punctuation", "voice_preprocessing")
 
 
 class LanguageProvider(Protocol):

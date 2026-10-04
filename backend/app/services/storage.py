@@ -7,8 +7,10 @@ from dataclasses import dataclass, field
 from http.client import HTTPException as HTTPTransportError
 import json
 import re
+import socket
+import ssl
 from typing import Protocol
-from urllib.error import URLError
+from urllib.error import URLError, HTTPError
 from urllib.parse import quote, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 from uuid import uuid4
@@ -19,7 +21,9 @@ SIGNED_URL_SECONDS = 300
 
 
 class StorageUnavailable(RuntimeError):
-    def __init__(self):
+    def __init__(self, reason_code="storage_unavailable", status_code=None):
+        self.reason_code = reason_code
+        self.status_code = status_code
         super().__init__("Private evidence storage is unavailable")
 
 
@@ -94,7 +98,17 @@ class SupabaseStorage:
             if len(raw) > 65_536:
                 raise StorageUnavailable()
             return json.loads(raw) if raw else {}
-        except (URLError, OSError, HTTPTransportError, ValueError, TypeError):
+        except HTTPError as error:
+            status = error.code
+            error.close()
+            raise StorageUnavailable("provider_rejected_request", status) from None
+        except URLError as error:
+            reason = error.reason
+            code = ("dns_resolution_failed" if isinstance(reason, socket.gaierror) else
+                    "tls_verification_failed" if isinstance(reason, ssl.SSLCertVerificationError) else
+                    "network_unavailable")
+            raise StorageUnavailable(code) from None
+        except (OSError, HTTPTransportError, ValueError, TypeError):
             raise StorageUnavailable() from None
 
     def _private_bucket(self, bucket):

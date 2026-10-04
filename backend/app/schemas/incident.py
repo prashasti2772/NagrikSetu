@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Annotated
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from app.models.complaint import ComplaintStatus
-from app.schemas.complaint import Severity
+from app.schemas.complaint import Severity, ComplaintRead
 
 class IncidentLink(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -25,7 +25,21 @@ class IncidentRead(BaseModel):
     reporting_citizens: int
     approvals: int
     rejections: int
-    verification_rule: str = "All reporting citizens must approve; any rejection reopens the shared incident."
+    verification_rule: str
+    verification_window_hours: int
+    verification_quorum_percent: int
+    verification_started_at: datetime | None
+    verification_deadline: datetime | None
+    verification_approvals_required: int
+    verification_eligible_reporters: int
+    verification_outcome: str | None
+    verification_closed_at: datetime | None
+    verification_reopened_at: datetime | None
+    verification_review_required: bool
+
+class IncidentDetail(BaseModel):
+    incident: IncidentRead
+    reports: list[ComplaintRead]
 
 class IncidentCandidate(BaseModel):
     incident_id: int
@@ -34,3 +48,5 @@ class IncidentCandidate(BaseModel):
     approximate_distance_m: float | None
     reason: str
     linked: bool = False
+    category_match: bool = False
+    text_similarity: float = Field(default=0, ge=0, le=1)

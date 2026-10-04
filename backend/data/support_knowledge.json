@@ -10,7 +10,7 @@
       "file a complaint",
       "reporting"
     ],
-    "answer": "Sign in as a citizen and open Report Issue. Enter a title, description, category, location coordinates and address; you may include an image URL. Review any suggested category or priority, then submit. Your selected values remain authoritative.",
+    "answer": "Sign in as a citizen and open Report Issue. Enter a title, description and category. Location and image evidence are optional; a typed address works without location permission. Review any suggested category or priority, then submit. Your selected values remain authoritative.",
     "suggestions": [
       "Which categories are available?",
       "How do I track a complaint?"
@@ -43,7 +43,7 @@
       "verification pending",
       "assigned status"
     ],
-    "answer": "submitted: received; under_review: being assessed; assigned: routed to a department or officer; in_progress: work underway; verification_pending: staff submitted a resolution for the citizen to check; resolved: the citizen confirmed resolution; reopened: further work is needed.",
+    "answer": "submitted: received; under_review: being assessed; assigned: routed to a department or officer; in_progress: work underway; verification_pending: staff submitted a resolution for review; resolved: closed by the recorded citizen/quorum or staff-review outcome; reopened: further work is needed. Check the incident outcome and timeline instead of assuming every reporter approved.",
     "suggestions": [
       "How does resolution verification work?",
       "How do I reopen an unresolved complaint?"
@@ -73,7 +73,7 @@
       "resolved complaint",
       "resolution confirmation"
     ],
-    "answer": "When staff submit a resolution, the complaint becomes verification_pending. The owning citizen checks the work and submits resolved=true to confirm, or resolved=false with optional feedback if it is still unresolved. Confirmation sets resolved and approved; rejection sets reopened and rejected.",
+    "answer": "When staff submit a resolution, a timed verification round begins. Check the incident's deadline and required approval count. Each reporter can respond once during the window with resolved=true to approve or resolved=false with feedback to reject. Quorum may close the incident; silence is not approval. A valid rejection reopens it. After expiry staff must record an evidence review before closing without quorum.",
     "suggestions": [
       "How do I reopen an unresolved complaint?",
       "How do I track a complaint?"
@@ -89,7 +89,7 @@
       "not fixed",
       "reject resolution"
     ],
-    "answer": "If your complaint is verification_pending and the issue is not fixed, reject the resolution with resolved=false and optional feedback; it will reopen. If you already confirmed it as resolved, authorized staff can reopen it. This chat provides guidance and does not change complaint status.",
+    "answer": "During an open verification window, reject an unresolved repair with resolved=false and feedback. If you already responded or the window ended, use your complaint's Reopen action with a reason; resolved or verification-pending incidents can reopen. Authorized staff can also reopen them. This chat provides guidance and does not change status.",
     "suggestions": [
       "How does resolution verification work?",
       "What do complaint statuses mean?"
@@ -122,7 +122,7 @@
       "register",
       "sign up"
     ],
-    "answer": "Register with your name, email and password to create a citizen account, then sign in. Staff accounts are created by an admin. Password recovery uses a single-use expiring OTP; in local development it is delivered to the backend terminal, not in the API response.",
+    "answer": "Register with your name, email and password to create a citizen account, then sign in. Staff accounts are created by an admin. Password recovery and email verification use separate single-use expiring OTPs delivered through configured Brevo email. Codes are never printed in the terminal or API response. Without email delivery configured, local development does not send codes.",
     "suggestions": [
       "How do I report an issue?",
       "How do I track a complaint?"
