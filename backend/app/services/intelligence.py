@@ -10,6 +10,7 @@ from app.core.config import settings, BACKEND_DIR
 from app.core.workflow import scope
 from app.models.complaint import Complaint, utc_now
 from app.models.domain import Department, ComplaintSuggestion
+from app.services.ml_artifacts import get_trained_models
 
 MODEL_VERSION = "tfidf-seed-v2"
 DUPLICATE_RADIUS_KM = 2.0
@@ -94,6 +95,12 @@ def category_model():
     return categories, centroids
 
 def category_suggestion(title, description):
+    trained = get_trained_models()
+    prediction = trained.predict("category", title + " " + description) if trained else None
+    if prediction:
+        return {"category": prediction.label, "confidence": round(prediction.score, 4),
+                "keywords": prediction.keywords, "model_version": prediction.model_version,
+                "confidence_method": "Trained artifact TF-IDF cosine similarity; not a calibrated probability"}
     categories, centroids = category_model()
     vector = tfidf_vectors([title + " " + description])[0]
     scores = {category: cosine(vector, centroids[category]) / sqrt(sum(weight * weight for weight in centroids[category].values()))
@@ -121,15 +128,26 @@ def priority_suggestion(title, description):
         if matches:
             return {"priority": priority, "signals": matches,
                     "reason": "Matched priority phrases: " + ", ".join(matches)}
+    trained = get_trained_models()
+    prediction = trained.predict("priority", title + " " + description) if trained else None
+    if prediction:
+        return {"priority": prediction.label, "signals": [], "model_version": prediction.model_version,
+                "reason": f"Trained priority artifact {prediction.model_version}; cosine score {prediction.score:.4f}, not a calibrated probability."}
     return {"priority": "medium", "signals": [],
             "reason": "Default medium priority; no configured priority phrases matched."}
 
-def recommend_department(db, category):
+def recommend_department(db, category, text=None):
     departments = db.scalars(select(Department).where(Department.is_active.is_(True)).order_by(Department.id)).all()
     # Prefer an exact department name before applying a free-form alias.
     department = next((d for d in departments if normalized_text(d.name) == normalized_text(category)), None)
     if department is None:
         department = next((d for d in departments if category_key(d.name) == category_key(category)), None)
+    # A reviewed category/department match remains the first routing choice.
+    if department is None:
+        trained = get_trained_models()
+        prediction = trained.predict("department", category + " " + (text or "")) if trained else None
+        if prediction:
+            department = next((d for d in departments if normalized_text(d.name) == normalized_text(prediction.label)), None)
     return {"id": department.id, "name": department.name} if department else None
 
 
@@ -171,12 +189,18 @@ def duplicates(db, title, description, user, exclude_id=None, *, category=None,
     if not vectors[0]:
         return []
     results = []
+    trained = get_trained_models()
     for complaint, candidate_vector in zip(candidates, vectors[1:]):
         text_score = cosine(vectors[0], candidate_vector)
+        prediction = trained.duplicate(title + " " + description, (complaint.title or "") + " " + (complaint.description or "")) if trained else None
+        if prediction:
+            text_score = prediction.score
         if text_score <= 0:
             continue
         score = min(1.0, max(0.0, float(text_score)))
         reasons = ["Similar title/description"]
+        if prediction:
+            reasons.append(f"trained text artifact {prediction.model_version}; score is not a probability")
         selected_category, existing_category = category_key(category), category_key(complaint.category)
         if selected_category not in {"", "other"} and existing_category not in {"", "other"}:
             if selected_category == existing_category:
@@ -214,7 +238,7 @@ def analyze(db, title, description, user, *, category=None, latitude=None, longi
             address=None, exclude_id=None):
     suggestion = category_suggestion(title, description)
     priority = priority_suggestion(title, description)
-    department = recommend_department(db, category or suggestion["category"])
+    department = recommend_department(db, category or suggestion["category"], title + " " + description)
     department_basis = category or suggestion["category"]
     department_reason = (f"Matched category '{department_basis}' to active department '{department['name']}'."
                         if department else f"No active department matches category '{department_basis}'.")
@@ -228,14 +252,15 @@ def analyze(db, title, description, user, *, category=None, latitude=None, longi
             "duplicate_similarity_method": DUPLICATE_SIMILARITY_METHOD,
             "reasons": {"category": suggestion["confidence_method"], "department": department_reason,
                         "priority": priority["reason"], "duplicates": DUPLICATE_SIMILARITY_METHOD},
-            "model_version": MODEL_VERSION,
+            "model_version": suggestion.get("model_version", priority.get("model_version", MODEL_VERSION)),
             "limitations": "Prototype English text suggestions; no validated accuracy or guaranteed emergency detection. Human review required."}
 
 def save_suggestion(db, complaint):
     category = category_suggestion(complaint.title, complaint.description)
     priority = priority_suggestion(complaint.title, complaint.description)
     # Routing recommendation honors the selected category, not the inferred category.
-    department = recommend_department(db, complaint.category)
+    department = recommend_department(db, complaint.category, complaint.title + " " + complaint.description)
     db.add(ComplaintSuggestion(complaint_id=complaint.id, suggested_category=category["category"],
            confidence=category["confidence"], suggested_priority=priority["priority"],
-           recommended_department_id=department["id"] if department else None, model_version=MODEL_VERSION))
+           recommended_department_id=department["id"] if department else None,
+           model_version=category.get("model_version", priority.get("model_version", MODEL_VERSION))))

@@ -1,0 +1,7 @@
+import {useState} from "react";
+import {Link} from "react-router-dom";
+import AuthorityWorkspaceLayout from "../components/common/AuthorityWorkspaceLayout";
+import LocationPicker from "../components/common/LocationPicker";
+import {listAll,label} from "../services/api";
+import {useResource,ResourceState} from "../services/useResource";
+export default function AuthorityMap(){const [selected,setSelected]=useState(null);const r=useResource(signal=>listAll("/authority/complaints",signal),[]);return <AuthorityWorkspaceLayout activeSection="map" title="Complaint Map"><main className="mx-auto max-w-6xl p-5"><h1 className="text-2xl font-bold">Complaint Map & Locations</h1><p className="my-4 text-sm text-slate-600">Select a reported location to display its pin. Verified jurisdiction boundaries are not available.</p><ResourceState resource={r}/><LocationPicker readOnly value={selected}/><section className="mt-5 rounded-xl bg-white p-5"><h2 className="font-bold">Reports in your scope</h2>{r.data?.map(c=><article className="border-b py-3 text-sm" key={c.id}><Link className="font-semibold text-orange-700" to={`/authority/complaints/${c.id}`}>#{c.id} ? {c.title}</Link><p>{c.address || "No address"} ? {label(c.status)}</p>{c.latitude!=null?<button className="mt-2 underline" onClick={()=>setSelected({latitude:c.latitude,longitude:c.longitude,address:c.address})}>Show reported pin</button>:<p className="text-xs text-slate-500">No coordinates supplied.</p>}</article>)}{r.data?.length===0 && <p>No reports in scope.</p>}</section></main></AuthorityWorkspaceLayout>;}

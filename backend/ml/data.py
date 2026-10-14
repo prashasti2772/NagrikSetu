@@ -4,6 +4,7 @@ import json
 import re
 from collections import defaultdict
 from ml.schema import DataValidationError, DuplicatePair, validate_records
+from ml.near_duplicates import near_text_pairs
 
 
 def normalized_text(text):
@@ -71,6 +72,8 @@ def related_components(records):
             groups.join(row.record_id, text_first.setdefault(normalized, row.record_id))
         for pair in row.duplicate_pairs:
             groups.join(row.record_id, pair.other_id)
+    for first, second in near_text_pairs((row.record_id, row.complaint_text) for row in records):
+        groups.join(first, second)
     # Positive incident labels must be internally consistent with negative labels.
     positive = Groups(row.record_id for row in records)
     for row in records:

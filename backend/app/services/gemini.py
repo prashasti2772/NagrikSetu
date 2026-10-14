@@ -11,7 +11,7 @@ PHONE_PATTERN = re.compile(r"(?<!\w)\+?\d[\d\s().-]{7,}\d(?!\w)")
 JWT_PATTERN = re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b")
 API_KEY_PATTERN = re.compile(r"\bAIza[0-9A-Za-z_-]{20,}\b")
 SECRET_FIELD_PATTERN = re.compile(
-    r"\b(?:password|passcode|otp|one[- ]time code|jwt|token|authorization)\b"
+    r"\b(?:password|passcode|otp|one[- ]time code|jwt|token|authorization|api[_ -]?key|supabase_secret_key|brevo_api_key|gemini_api_key|jwt_secret)\b"
     r"\s*(?:is|:|=)?\s*[^\s,;]+",
     re.IGNORECASE,
 )
@@ -23,6 +23,7 @@ def sanitize_user_text(value):
     value = "".join(ch for ch in (value or "") if ch.isprintable() or ch in "\n\t")
     value = JWT_PATTERN.sub("[redacted credential]", value)
     value = API_KEY_PATTERN.sub("[redacted credential]", value)
+    value = re.sub(r"\b(?:sb_secret_|xkeysib-)[A-Za-z0-9_-]+", "[redacted credential]", value)
     value = SECRET_FIELD_PATTERN.sub("[redacted credential]", value)
     value = EMAIL_PATTERN.sub("[redacted contact]", value)
     return PHONE_PATTERN.sub("[redacted contact]", value).strip()

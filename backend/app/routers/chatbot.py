@@ -1,6 +1,6 @@
 from math import isfinite
 from typing import Annotated
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, Response
 from sqlalchemy import select
 from app.core.config import settings
 from app.core.rate_limit import rate_limit
@@ -10,17 +10,33 @@ from app.core.workflow import scope
 from app.models.complaint import Complaint
 from app.schemas.chatbot import ChatMessage, ChatReply, ChatbotAnalyzeReply
 from app.schemas.phase3 import AnalyzeComplaint
-from app.services.chatbot import local_issue_draft, reply
+from app.services.chatbot import local_issue_draft
+from app.services.conversation import converse, prepare_draft
 from app.services.gemini import get_gemini_service, sanitize_user_text
 from app.services.image_validation import ImageValidationError, validate_image
 from app.services.intelligence import analyze
 
-router = APIRouter(prefix="/api/v1/chatbot", tags=["chatbot"])
+from fastapi.exceptions import RequestValidationError
+from fastapi.routing import APIRoute
+
+class ChatRoute(APIRoute):
+    def get_route_handler(self):
+        original = super().get_route_handler()
+        async def handler(request):
+            try:
+                return await original(request)
+            except RequestValidationError:
+                # Framework validation details can echo raw chat text or credentials.
+                raise HTTPException(422, "Invalid chatbot request; check field types, sizes and allowed fields") from None
+        return handler
+
+router = APIRouter(prefix="/api/v1/chatbot", tags=["chatbot"], route_class=ChatRoute)
 
 @router.post("/message", response_model=ChatReply,
              dependencies=[Depends(rate_limit("chatbot", settings.rate_limit_intelligence))])
-def message(payload: ChatMessage, db: DB, user = Depends(optional_user), gemini=Depends(get_gemini_service)):
-    return reply(db, payload, user, gemini)
+def message(payload: ChatMessage, db: DB, response: Response, user = Depends(optional_user), gemini=Depends(get_gemini_service)):
+    response.headers['Cache-Control'] = 'no-store'
+    return converse(db, payload, user, gemini)
 
 
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
@@ -35,13 +51,22 @@ def image_mime(data, declared_type):
 
 @router.post("/analyze", response_model=ChatbotAnalyzeReply,
              dependencies=[Depends(rate_limit("chatbot-analyze", settings.rate_limit_intelligence))])
-async def analyze_input(message: Annotated[str | None, Form()] = None,
+async def analyze_input(response: Response, message: Annotated[str | None, Form()] = None,
                         image: Annotated[UploadFile | None, File()] = None,
                         latitude: Annotated[float | None, Form()] = None,
                         longitude: Annotated[float | None, Form()] = None,
+                        location_accuracy_m: Annotated[float | None, Form(ge=0, le=100000, allow_inf_nan=False)] = None,
+                        location_text: Annotated[str | None, Form(max_length=500)] = None,
+                        locality: Annotated[str | None, Form(max_length=100)] = None,
+                        area: Annotated[str | None, Form(max_length=100)] = None,
+                        ward: Annotated[str | None, Form(max_length=100)] = None,
+                        requested_language: Annotated[str | None, Form(pattern=r"^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$", max_length=35)] = None,
                         complaint_id: Annotated[int | None, Form(gt=0, le=2147483647)] = None,
                         db: DB = None, user=Depends(optional_user), gemini=Depends(get_gemini_service)):
+    response.headers["Cache-Control"] = "no-store"
     clean_message = (message or "").strip()
+    if (latitude is None) != (longitude is None):
+        raise HTTPException(422, "latitude and longitude must be provided together")
     if len(clean_message) > 2000:
         raise HTTPException(422, "Message must be at most 2000 characters")
     if not clean_message and image is None:
@@ -97,7 +122,31 @@ async def analyze_input(message: Annotated[str | None, Form()] = None,
     assistant_message = draft["assistant_message"]
     if provider == "gemini":
         assistant_message += " AI suggestions may be incorrect; review and confirm this draft before submitting."
+    common = None
+    if user is None or user.role == "citizen":
+        # Request-local bytes are never retained as conversation history. The
+        # frontend uses the existing evidence upload after report confirmation.
+        values = {"title": draft["title"], "description": draft["description"],
+                  "category": analysis["suggested_category"], "severity": analysis["suggested_priority"],
+                  "latitude": latitude, "longitude": longitude,
+                  "location_accuracy_m": location_accuracy_m, "location_text": location_text,
+                  "locality": locality, "area": area, "ward": ward}
+        try:
+            common = prepare_draft(db, values, user, clean_message, requested_language,
+                image_attached=image_data is not None, needs_description=not clean_message and provider=="local",
+                provider=provider)
+        except ValueError:
+            raise HTTPException(422, "Invalid draft or location fields") from None
+    from app.schemas.chatbot import ConversationFields
+    from app.services.conversation import language_metadata
+    additions = {key: getattr(common,key) for key in ConversationFields.model_fields} if common else {
+        "message": assistant_message, "intent": "complaint_analysis",
+        "requires_confirmation": True, "provider_used": provider, "fallback_used": provider=="local",
+        **language_metadata(clean_message,requested_language)}
+    for key in ("suggested_category","suggested_department","suggested_priority","possible_duplicates","reasons"):
+        additions.pop(key,None)
     return ChatbotAnalyzeReply(
+        **additions,
         assistant_message=assistant_message,
         draft_complaint={"title": draft["title"], "description": draft["description"]},
         suggested_category=analysis["suggested_category"],

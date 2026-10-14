@@ -1,0 +1,58 @@
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.crt
+*.cer
+*.key
+*.p12
+*.pfx
+# Local Python environments and databases
+.venv/
+__pycache__/
+*.py[cod]
+*.db
+*.db-*
+*.sqlite*
+*.bak
+*.backup
+*.dump
+*.pem
+*.crt
+*.cer
+*.p12
+*.pfx
+# Temporary assistant inputs
+attachments/
+.codex/attachments/
+Pasted text*.txt
+
+# Frontend dependencies, hosting metadata and generated builds
+node_modules/
+dist/
+dist-ssr/
+build/
+.vercel/
+.vite/
+coverage/
+*.tsbuildinfo
+*.log
+
+# Additional local environments, caches and credential files
+venv/
+env/
+virtualenv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.cache/
+.coverage
+htmlcov/
+secrets/
+credentials*.json
+service-account*.json
+*.secret
+*.code-workspace
+Thumbs.db
+.DS_Store
