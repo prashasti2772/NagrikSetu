@@ -3,8 +3,9 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Bell, Languages, LockKeyhole, LogOut, Mail, ShieldCheck, UserRound } from "lucide-react";
 import { useAuth } from "../auth";
+import { readLocalProfile, saveLocalProfile } from "../services/localProfile";
 
-const defaultPreferences = { email: true, resolution: true, digest: false };
+const defaultPreferences = { email: true, resolution: true, digest: false, sms: false };
 
 function readPreferences() {
   try { return { ...defaultPreferences, ...JSON.parse(localStorage.getItem("nagrikSetuNotificationPreferences") || "{}") }; }
@@ -63,11 +64,12 @@ export default function ProfileSettings() {
             <button disabled={saving} className="rounded-lg bg-orange-600 px-4 py-2.5 text-sm font-bold text-white">Save Changes</button>
             {message && <p role="status" className="text-xs text-amber-800">{message}</p>}
           </form>
+          <LocalAddressPreferences key={user?.id} userId={user?.id}/>
         </section>
         <div className="space-y-4">
           <section className="rounded-xl border border-slate-200 bg-white p-5 sm:p-6">
             <div className="mb-3 flex items-center gap-3"><Bell className="text-orange-700" /><h2 className="font-bold text-slate-900">Local Display Preferences</h2></div>
-            {[{ id: "email", label: "Show email update preference (local only)" }, { id: "resolution", label: "Show resolution preference (local only)" }, { id: "digest", label: "Show digest preference (local only)" }].map((item) => <label key={item.id} className="flex items-center justify-between gap-3 border-b border-slate-100 py-3 last:border-0"><span className="text-sm text-slate-700">{item.label}</span><input type="checkbox" checked={preferences[item.id]} onChange={() => updatePreference(item.id)} className="h-4 w-4 accent-orange-600" /></label>)}
+            {[{ id: "email", label: "Show email update preference (local only)" }, { id: "resolution", label: "Show resolution preference (local only)" }, { id: "digest", label: "Show digest preference (local only)" }, { id: "sms", label: "Show SMS / WhatsApp preference (local only)" }].map((item) => <label key={item.id} className="flex items-center justify-between gap-3 border-b border-slate-100 py-3 last:border-0"><span className="text-sm text-slate-700">{item.label}</span><input type="checkbox" checked={preferences[item.id]} onChange={() => updatePreference(item.id)} className="h-4 w-4 accent-orange-600" /></label>)}
           </section>
           <section className="rounded-xl border border-slate-200 bg-white p-5 sm:p-6">
             <div className="mb-3 flex items-center gap-3"><Languages className="text-orange-700" /><h2 className="font-bold text-slate-900">Preferred Language</h2></div>
@@ -81,4 +83,17 @@ export default function ProfileSettings() {
       </div>
     </main>
   );
+}
+
+function LocalAddressPreferences({userId}) {
+  const [profile,setProfile]=useState(()=>readLocalProfile(userId));
+  const [message,setMessage]=useState("");
+  return <form onSubmit={event=>{event.preventDefault();setMessage(saveLocalProfile(userId,profile)?"Address preferences saved in this browser.":"Browser storage is unavailable; address preferences were not saved.");}} className="mt-6 space-y-4 border-t border-slate-100 pt-5">
+    <h3 className="font-bold text-slate-900">Address preferences</h3>
+    <p className="text-xs text-slate-500">Saved only in this browser for this account; not synced to your account or used to verify your address.</p>
+    <label className="block text-sm font-semibold text-slate-700">Residential address<textarea value={profile.address} maxLength={500} onChange={event=>setProfile(current=>({...current,address:event.target.value}))} className="field" /></label>
+    <label className="block text-sm font-semibold text-slate-700">City<input value={profile.city} maxLength={120} onChange={event=>setProfile(current=>({...current,city:event.target.value}))} className="field" /></label>
+    <button className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-800">Save address preferences</button>
+    {message && <p role="status" className="text-xs text-amber-800">{message}</p>}
+  </form>;
 }

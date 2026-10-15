@@ -5,8 +5,8 @@ const source=(await readFile(new URL("../src/services/api.js",import.meta.url),"
 const {api,setToken,listAll}=await import(`data:text/javascript;base64,${Buffer.from(source).toString("base64")}`);
 const login=async email=>{const result=await api("/auth/login",{method:"POST",body:{email,password:process.env.SMOKE_PASSWORD},accessToken:null});setToken(result.access_token);return api("/auth/me");};
 await assert.rejects(api("/authority/dashboard"),e=>e.status===401);
-await api("/auth/register",{method:"POST",body:{full_name:"Smoke Citizen",email:"smoke.citizen@example.com",password:process.env.SMOKE_PASSWORD}});
-assert.equal((await login("smoke.citizen@example.com")).role,"citizen");
+await api("/auth/register",{method:"POST",body:{full_name:"Smoke Citizen",email:"smoke.citizen@example.com",phone:"9000000000",password:process.env.SMOKE_PASSWORD}});
+const citizen=await login("smoke.citizen@example.com");assert.equal(citizen.role,"citizen");assert.equal(citizen.phone,"9000000000");
 await assert.rejects(api("/authority/dashboard"),e=>e.status===403);
 const complaint=await api("/complaints",{method:"POST",body:{title:"Road damaged",description:"Road surface has a hazardous hole",category:"Roads & Infrastructure",latitude:22,longitude:77,address:"Test Road",severity:"high"}});
 assert.equal((await api(`/complaints/${complaint.id}`)).id,complaint.id);

@@ -51,6 +51,9 @@ export default function Navbar() {
   const [profileOpen, setProfileOpen] = useState(false);
   const { user, logout } = useAuth();
   const isLoggedIn = Boolean(user);
+  const visibleNavItems = isLoggedIn && user.role === "citizen"
+    ? [...navItems.slice(0, 3), { label: "My Complaints", path: "/my-complaints" }, ...navItems.slice(3)]
+    : navItems;
   const handleLogout = () => { logout(); setProfileOpen(false); setMenuOpen(false); navigate("/login"); };
 
   const isActive = (path) => {
@@ -84,7 +87,7 @@ export default function Navbar() {
         {/* Desktop Navigation */}
         <div className="hidden items-center gap-1 xl:flex">
 
-          {navItems.map((item) => {
+          {visibleNavItems.map((item) => {
             const active = isActive(item.path);
 
             return (
@@ -144,8 +147,8 @@ export default function Navbar() {
             <div className="relative ml-3">
               <button
                 type="button"
-                onClick={() => navigate("/profile")}
-                aria-label="Open user profile"
+                onClick={() => setProfileOpen((open) => !open)}
+                aria-label="Open account menu"
                 aria-expanded={profileOpen}
                 className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-950 text-white"
               >

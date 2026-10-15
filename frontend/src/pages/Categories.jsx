@@ -1,6 +1,9 @@
 import {api} from "../services/api";
 import {useResource,ResourceState} from "../services/useResource";
+import { categories as categoryGuidance } from "../data/categoriesData";
+import { buildCategoryDirectory, matchesCategory } from "../services/categoryDirectory";
 import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Search,
   ArrowRight,
@@ -12,37 +15,21 @@ import {
 
 
 function Categories() {
+  const navigate=useNavigate();
   const resource=useResource(signal=>api("/departments",{signal}),[]);
-  const categories=(resource.data || []).map(d=>({id:d.id,title:d.name,department:d.name,description:d.description || "Active civic department",reports:[],filter:d.name,icon:Building2,iconStyle:"bg-orange-50 text-orange-700",status:"Active"}));
-  const categoryFilters=["All Issues",...categories.map(c=>c.title)];
+  const categories=buildCategoryDirectory(resource.data || [],categoryGuidance).map(category=>({icon:Building2,iconStyle:"bg-orange-50 text-orange-700",...category}));
+  const categoryFilters=["All Issues",...new Set(categories.flatMap(category=>[category.filter,category.title]))];
   const [activeFilter, setActiveFilter] = useState("All Issues");
   const [search, setSearch] = useState("");
 
   // Filter categories
-  const filteredCategories = categories.filter((category) => {
-    const matchesFilter =
-      activeFilter === "All Issues" ||
-      category.filter === activeFilter;
-
-    const searchText = `
-      ${category.title}
-      ${category.department}
-      ${category.description}
-      ${category.reports.join(" ")}
-    `.toLowerCase();
-
-    const matchesSearch = searchText.includes(
-      search.toLowerCase()
-    );
-
-    return matchesFilter && matchesSearch;
-  });
+  const filteredCategories = categories.filter(category=>matchesCategory(category,activeFilter,search));
 
   // Report issue
   const handleReport = (category) => {
-    window.location.href = `/report-issue?category=${encodeURIComponent(
+    navigate(`/report-issue?category=${encodeURIComponent(
       category.title
-    )}`;
+    )}`);
   };
 
   return (
@@ -268,12 +255,12 @@ function Categories() {
 
           <div className="flex flex-col gap-2 sm:flex-row">
 
-            <button className="flex h-9 items-center justify-center gap-2 rounded-md bg-[#e6e8eb] px-4 text-[11px] font-semibold text-gray-800 hover:bg-gray-300">
+            <button onClick={()=>navigate("/help-support")} className="flex h-9 items-center justify-center gap-2 rounded-md bg-[#e6e8eb] px-4 text-[11px] font-semibold text-gray-800 hover:bg-gray-300">
               <FileText size={15} />
               Citizen Chatbot
             </button>
 
-            <button className="flex h-9 items-center justify-center gap-2 rounded-md bg-[#b83205] px-4 text-[11px] font-semibold text-white hover:bg-[#982c04]">
+            <button onClick={()=>navigate("/report-issue")} className="flex h-9 items-center justify-center gap-2 rounded-md bg-[#b83205] px-4 text-[11px] font-semibold text-white hover:bg-[#982c04]">
               <FileText size={15} />
               Report Issue
             </button>

@@ -26,7 +26,7 @@ export default function Login({ register = false }) {
     setLoading(true);
     try {
       const form = new FormData(event.currentTarget);
-      if(register) await api("/auth/register",{method:"POST",body:{full_name:form.get("full_name"),email:form.get("email"),password}});
+      if(register) await api("/auth/register",{method:"POST",body:{full_name:form.get("full_name"),email:form.get("email"),password,phone:form.get("phone")?.trim() || null}});
       await login(form.get("email"), password, false);
       navigate("/my-complaints",{replace:true});
     } catch(error) {setNotice(error.message);} finally {setLoading(false);}
@@ -62,6 +62,7 @@ export default function Login({ register = false }) {
               </label>
             )}
 
+            {register && <label className="block text-sm font-semibold text-slate-800">Phone (optional)<input name="phone" type="tel" autoComplete="tel" maxLength={30} className="field" /></label>}
             <label className="block text-sm font-semibold text-slate-800">
               Email address
               <span className="relative mt-1.5 block">
@@ -82,6 +83,7 @@ export default function Login({ register = false }) {
             )}
 
             
+            {register && <label className="flex items-start gap-3 text-sm text-slate-600"><input required name="acknowledgement" type="checkbox" className="mt-1 accent-orange-600" /><span>I agree to submit accurate civic reports and use NagrikSetu responsibly.</span></label>}
             {notice && <p role="status" className="rounded-md bg-amber-50 p-3 text-xs leading-5 text-amber-900">{notice}</p>}
 
             <button disabled={loading} className="flex w-full items-center justify-center gap-2 rounded-lg bg-orange-600 py-3 font-bold text-white transition hover:bg-orange-700 disabled:opacity-60">
