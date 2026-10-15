@@ -1,0 +1,131 @@
+[
+  {
+    "topic": "reporting",
+    "phrases": [
+      "report an issue",
+      "report issue",
+      "submit complaint",
+      "create complaint",
+      "report a problem",
+      "file a complaint",
+      "reporting"
+    ],
+    "answer": "Sign in as a citizen and open Report Issue. Enter a title, description and category. Location and image evidence are optional; a typed address works without location permission. Review any suggested category or priority, then submit. Your selected values remain authoritative.",
+    "suggestions": [
+      "Which categories are available?",
+      "How do I track a complaint?"
+    ]
+  },
+  {
+    "topic": "tracking",
+    "phrases": [
+      "track",
+      "tracking",
+      "find complaint",
+      "where is my complaint",
+      "complaint number"
+    ],
+    "answer": "Sign in and open My Complaints or your citizen dashboard. Select your complaint to see its status, assignment and timeline. To check a specific complaint here, send its ID in complaint_id or write \"status of complaint #123\".",
+    "suggestions": [
+      "What do complaint statuses mean?",
+      "How does resolution verification work?"
+    ]
+  },
+  {
+    "topic": "statuses",
+    "phrases": [
+      "statuses",
+      "status meaning",
+      "status mean",
+      "under review",
+      "in progress",
+      "submitted",
+      "verification pending",
+      "assigned status"
+    ],
+    "answer": "submitted: received; under_review: being assessed; assigned: routed to a department or officer; in_progress: work underway; verification_pending: staff submitted a resolution for review; resolved: closed by the recorded citizen/quorum or staff-review outcome; reopened: further work is needed. Check the incident outcome and timeline instead of assuming every reporter approved.",
+    "suggestions": [
+      "How does resolution verification work?",
+      "How do I reopen an unresolved complaint?"
+    ]
+  },
+  {
+    "topic": "categories",
+    "phrases": [
+      "category",
+      "categories",
+      "department list",
+      "types of issues"
+    ],
+    "answer": "Choose the category that best matches the issue. Local text analysis can suggest a category and department, but it does not decide or overwrite your selection.",
+    "suggestions": [
+      "How do I report an issue?",
+      "How are complaints assigned?"
+    ]
+  },
+  {
+    "topic": "verification",
+    "phrases": [
+      "verify",
+      "verification",
+      "confirm resolution",
+      "accept resolution",
+      "resolved complaint",
+      "resolution confirmation"
+    ],
+    "answer": "When staff submit a resolution, a timed verification round begins. Check the incident's deadline and required approval count. Each reporter can respond once during the window with resolved=true to approve or resolved=false with feedback to reject. Quorum may close the incident; silence is not approval. A valid rejection reopens it. After expiry staff must record an evidence review before closing without quorum.",
+    "suggestions": [
+      "How do I reopen an unresolved complaint?",
+      "How do I track a complaint?"
+    ]
+  },
+  {
+    "topic": "reopening",
+    "phrases": [
+      "reopen",
+      "reopening",
+      "unresolved",
+      "still broken",
+      "not fixed",
+      "reject resolution"
+    ],
+    "answer": "During an open verification window, reject an unresolved repair with resolved=false and feedback. If you already responded or the window ended, use your complaint's Reopen action with a reason; resolved or verification-pending incidents can reopen. Authorized staff can also reopen them. This chat provides guidance and does not change status.",
+    "suggestions": [
+      "How does resolution verification work?",
+      "What do complaint statuses mean?"
+    ]
+  },
+  {
+    "topic": "assignment",
+    "phrases": [
+      "assign",
+      "assignment",
+      "assigned officer",
+      "routing",
+      "officer workflow",
+      "assigned"
+    ],
+    "answer": "Admins route complaints to departments and active officers. Authorities work within their department or explicit assignments and can assign a compatible officer. Only admins transfer complaints between departments. Staff submit resolution evidence for citizen verification.",
+    "suggestions": [
+      "What do complaint statuses mean?",
+      "How does resolution verification work?"
+    ]
+  },
+  {
+    "topic": "account",
+    "phrases": [
+      "forgot password",
+      "reset password",
+      "otp",
+      "login",
+      "sign in",
+      "register",
+      "sign up"
+    ],
+    "answer": "Register with your name, email and password to create a citizen account, then sign in. Staff accounts are created by an admin. Password recovery and email verification use separate single-use expiring OTPs delivered through configured Brevo email. Codes are never printed in the terminal or API response. Without email delivery configured, local development does not send codes.",
+    "suggestions": [
+      "How do I report an issue?",
+      "How do I track a complaint?"
+    ]
+  }
+]

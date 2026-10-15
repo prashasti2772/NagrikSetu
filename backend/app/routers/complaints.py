@@ -1,0 +1,62 @@
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.db.database import get_db
+from app.core.security import get_current_user, require_authority, require_citizen
+from app.core.workflow import change_status, permitted, scope
+from app.models.complaint import Complaint
+from app.services.complaints import create_report
+from app.schemas.complaint import ComplaintCreate, ComplaintRead, ComplaintStatusUpdate
+
+
+router = APIRouter(prefix="/api/v1/complaints", tags=["complaints"])
+Database = Annotated[Session, Depends(get_db)]
+ComplaintId = Annotated[int, Path(gt=0)]
+
+
+def get_complaint_or_404(complaint_id: int, db: Session) -> Complaint:
+    complaint = db.get(Complaint, complaint_id)
+    if complaint is None:
+        raise HTTPException(status_code=404, detail="Complaint not found")
+    return complaint
+
+
+@router.post("", response_model=ComplaintRead, status_code=status.HTTP_201_CREATED)
+def create_complaint(payload: ComplaintCreate, db: Database, user = Depends(require_citizen)):
+    return create_report(db, payload, user)
+
+
+@router.get("", response_model=list[ComplaintRead])
+def list_complaints(
+    db: Database,
+    user = Depends(get_current_user),
+    offset: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+):
+    query = select(Complaint)
+    if user.role == "citizen":
+        query = query.where(Complaint.citizen_id == user.id)
+    else:
+        query = query.where(scope(user))
+    return db.scalars(query.order_by(Complaint.id.desc()).offset(offset).limit(limit)).all()
+
+
+@router.get("/{complaint_id}", response_model=ComplaintRead)
+def get_complaint(complaint_id: ComplaintId, db: Database, user = Depends(get_current_user)):
+    complaint = get_complaint_or_404(complaint_id, db)
+    permitted(complaint, user)
+    return complaint
+
+
+@router.patch("/{complaint_id}/status", response_model=ComplaintRead)
+def update_complaint_status(
+    complaint_id: ComplaintId, payload: ComplaintStatusUpdate, db: Database, user = Depends(require_authority),
+):
+    complaint = get_complaint_or_404(complaint_id, db)
+    change_status(db, complaint, user, payload.status)
+    db.commit()
+    db.refresh(complaint)
+    return complaint

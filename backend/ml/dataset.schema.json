@@ -1,0 +1,143 @@
+{
+  "$defs": {
+    "DuplicatePair": {
+      "additionalProperties": false,
+      "properties": {
+        "other_id": {
+          "pattern": "^[A-Za-z0-9_.:-]{1,100}$",
+          "title": "Other Id",
+          "type": "string"
+        },
+        "is_duplicate": {
+          "title": "Is Duplicate",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "other_id",
+        "is_duplicate"
+      ],
+      "title": "DuplicatePair",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "record_id": {
+      "pattern": "^[A-Za-z0-9_.:-]{1,100}$",
+      "title": "Record Id",
+      "type": "string"
+    },
+    "complaint_text": {
+      "maxLength": 10000,
+      "minLength": 1,
+      "title": "Complaint Text",
+      "type": "string"
+    },
+    "category": {
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Category",
+      "type": "string"
+    },
+    "department": {
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Department",
+      "type": "string"
+    },
+    "priority": {
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ],
+      "title": "Priority",
+      "type": "string"
+    },
+    "latitude": {
+      "anyOf": [
+        {
+          "maximum": 90,
+          "minimum": -90,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Latitude"
+    },
+    "longitude": {
+      "anyOf": [
+        {
+          "maximum": 180,
+          "minimum": -180,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Longitude"
+    },
+    "incident_group_id": {
+      "anyOf": [
+        {
+          "pattern": "^[A-Za-z0-9_.:-]{1,100}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Incident Group Id"
+    },
+    "duplicate_pairs": {
+      "items": {
+        "$ref": "#/$defs/DuplicatePair"
+      },
+      "maxItems": 1000,
+      "title": "Duplicate Pairs",
+      "type": "array"
+    },
+    "source": {
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Source",
+      "type": "string"
+    },
+    "language": {
+      "maxLength": 35,
+      "pattern": "^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$",
+      "title": "Language",
+      "type": "string"
+    },
+    "split": {
+      "default": "unassigned",
+      "enum": [
+        "unassigned",
+        "train",
+        "validation",
+        "test"
+      ],
+      "title": "Split",
+      "type": "string"
+    }
+  },
+  "required": [
+    "record_id",
+    "complaint_text",
+    "category",
+    "department",
+    "priority",
+    "source",
+    "language"
+  ],
+  "title": "DatasetRecord",
+  "type": "object"
+}

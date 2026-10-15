@@ -1,0 +1,13 @@
+﻿# Local source data, manifests and trained artifacts must not be committed.
+*.jsonl
+*.csv
+artifacts/*
+!artifacts/.gitkeep
+datasets/*
+!datasets/raw/
+!datasets/processed/
+datasets/raw/*
+datasets/processed/*
+!datasets/raw/.gitkeep
+!datasets/processed/.gitkeep
+__pycache__/
