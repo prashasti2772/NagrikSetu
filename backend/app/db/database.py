@@ -44,6 +44,8 @@ def build_engine(database_url: str) -> Engine:
         return create_engine(
             url,
             pool_pre_ping=True,
+            # Return an unavailable response promptly when all pool slots are busy.
+            pool_timeout=3,
             hide_parameters=True,
             connect_args={
                 "ssl_context": False if ssl_mode == "disable" else verified_ssl_context(),

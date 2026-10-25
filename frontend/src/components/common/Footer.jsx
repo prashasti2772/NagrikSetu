@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import logo from "../../assets/logo/nagriksetu-logo.png";
 
 export default function Footer({ authority = false }) {
@@ -24,10 +25,10 @@ export default function Footer({ authority = false }) {
                 Quick Links
               </h4>
               <div className="space-y-3 text-xs text-gray-400">
-                <p>Reports</p>
-                <p>Departments</p>
-                <p>Notifications</p>
-                <p>Profile</p>
+                <Link to="/authority/reports" className="block hover:text-white">Reports</Link>
+                <Link to="/authority/departments" className="block hover:text-white">Departments</Link>
+                <Link to="/authority/notifications" className="block hover:text-white">Notifications</Link>
+                <Link to="/authority/profile" className="block hover:text-white">Profile</Link>
               </div>
             </div>
 
@@ -71,10 +72,10 @@ export default function Footer({ authority = false }) {
           <div>
             <h3 className="text-xs font-bold">Quick Links</h3>
             <div className="mt-4 space-y-2 text-[9px] text-slate-300">
-              <p>Resources</p>
-              <p>Help &amp; Support</p>
-              <p>Report Issue</p>
-              <p>Track Complaint</p>
+              <Link to="/resources" className="block hover:text-white">Resources</Link>
+              <Link to="/help-support" className="block hover:text-white">Help &amp; Support</Link>
+              <Link to="/report-issue" className="block hover:text-white">Report Issue</Link>
+              <Link to="/track-complaint" className="block hover:text-white">Track Complaint</Link>
             </div>
           </div>
 

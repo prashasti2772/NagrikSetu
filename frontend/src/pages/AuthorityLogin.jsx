@@ -1,12 +1,14 @@
 import { useAuth } from "../auth";
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { loginDestination } from "../services/navigation";
 import { Eye, EyeOff, LockKeyhole, Mail, ShieldCheck } from "lucide-react";
 
 
 export default function AuthorityLogin() {
   const { login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [showPassword, setShowPassword] = useState(false);
 
   const [notice, setNotice] = useState("");
@@ -14,11 +16,12 @@ export default function AuthorityLogin() {
 
   const submit = async (event) => {
     event.preventDefault();
+    setNotice("");
     setLoading(true);
     try {
       const form = new FormData(event.currentTarget);
       await login(form.get("email"), form.get("password"), true);
-      navigate("/authority/dashboard",{replace:true});
+      navigate(loginDestination(location.state?.from, true),{replace:true});
     } catch(error) {setNotice(error.message);} finally {setLoading(false);}
   };
 

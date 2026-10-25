@@ -33,7 +33,7 @@ export function AuthGuard({children,roles}) {
  const {user,loading,error,restore}=useAuth();const location=useLocation();
  if(loading)return <p role="status" className="p-8">Checking session...</p>;
  if(error)return <div role="alert" className="p-8">{error}<button onClick={restore} className="ml-3 underline">Retry</button></div>;
- if(!user)return <Navigate to={roles?.some(role=>["authority","admin"].includes(role))?"/authority/login":"/login"} state={{from:location.pathname}} replace/>;
+ if(!user)return <Navigate to={roles?.some(role=>["authority","admin"].includes(role))?"/authority/login":"/login"} state={{from:location.pathname+location.search+location.hash}} replace/>;
  if(roles && !roles.includes(user.role))return <main className="p-8"><h1 className="text-xl font-bold">Access restricted</h1><p>Your account cannot access this page.</p><a href={user.role==="citizen"?"/my-complaints":"/authority/dashboard"}>Open your dashboard</a></main>;
  return children;
 }

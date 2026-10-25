@@ -9,9 +9,11 @@ command arguments, screenshots, support messages, or frontend variables. Local
 
 SQLite (`backend/nagriksetu.db`) remains the development database. Production targets
 Supabase PostgreSQL through the **process environment** `DATABASE_URL`. Missing or
-blank `DATABASE_URL` selects SQLite; a configured but inaccessible database fails
-startup rather than silently switching databases. Storage credentials do not select
-the SQL database. Changing the URL does not transfer development data.
+blank `DATABASE_URL` selects SQLite only with `APP_ENV=development`. Outside
+development, startup refuses missing PostgreSQL configuration, disabled TLS, or
+missing exact HTTPS frontend origins in `CORS_ORIGINS`. A configured but inaccessible
+database fails startup. Storage credentials do not select the SQL database. Changing
+the URL does not transfer development data.
 
 In the production Supabase project, use **Table Editor** (database tables), **SQL
 Editor** for reviewed queries, and the application's authenticated Admin APIs for

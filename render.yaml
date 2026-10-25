@@ -1,0 +1,44 @@
+# Reference configuration for the two Render services. No database is provisioned.
+# Applying a Blueprint creates/deploys services; review and approve that separately.
+# Names are suggestions. For existing manually configured services, copy settings
+# into those services instead of creating duplicates.
+services:
+  - type: web
+    name: nagriksetu-api
+    runtime: python
+    plan: free
+    branch: main
+    rootDir: backend
+    autoDeployTrigger: "off"
+    buildCommand: python -m pip install -r requirements.txt
+    startCommand: python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1
+    healthCheckPath: /health/ready
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.13.15"
+      - key: APP_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+
+  - type: web
+    name: nagriksetu-web
+    runtime: static
+    branch: main
+    rootDir: frontend
+    autoDeployTrigger: "off"
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: NODE_VERSION
+        value: "24.16.0"
+      - key: VITE_API_BASE_URL
+        sync: false
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

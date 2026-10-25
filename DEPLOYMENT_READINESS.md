@@ -1,5 +1,13 @@
 # NagrikSetu deployment readiness — 14 October 2026
 
+> **Historical report, superseded on 25 October 2026.** Use
+> [HACKATHON_READINESS.md](HACKATHON_READINESS.md) and `render.yaml` for current
+> results and deployment settings. The branch tips, local environment findings,
+> test totals and SQLite deployment option below describe the earlier audit only.
+> The current release target is `main` for both services; production now requires
+> PostgreSQL and rejects SQLite. Vercel remains an alternative frontend host,
+> with the current `frontend` root and build settings in the newer report.
+
 **Status: local prototype checks pass; deployment remains blocked by source publication, persistence and production configuration.** No push, merge, reset, commit or deployment was performed. Existing teammate work was preserved. Credential values are omitted.
 
 The exact source and Git state are:

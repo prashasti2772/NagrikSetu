@@ -26,12 +26,15 @@ export default function ReportForm() {
   const [created,setCreated]=useState(null);
   const [pendingPhotos,setPendingPhotos]=useState([]);
   const [departments,setDepartments]=useState([]);
+  const [departmentsLoading,setDepartmentsLoading]=useState(true);
+  const [departmentError,setDepartmentError]=useState("");
 
   const [review, setReview] = useState(false);
   const [notice, setNotice] = useState("");
 
   const [category, setCategory] = useState(new URLSearchParams(window.location.search).get("category") || issueCategories[0]);
-  useEffect(()=>{api("/departments").then(rows=>{setDepartments(rows);setCategory(current=>rows.some(d=>d.name===current)?current:rows[0]?.name || "");}).catch(e=>setNotice(e.message));},[]);
+  const loadDepartments=()=>{setDepartmentsLoading(true);setDepartmentError("");api("/departments").then(rows=>{if(!Array.isArray(rows))throw new Error("The backend returned invalid categories. Please try again.");setDepartments(rows);setCategory(current=>rows.some(d=>d.name===current)?current:rows[0]?.name || "");if(!rows.length)setDepartmentError("No issue categories are available. Please contact support.");}).catch(e=>setDepartmentError(e.message)).finally(()=>setDepartmentsLoading(false));};
+  useEffect(()=>{Promise.resolve().then(loadDepartments);},[]);
   const [severity, setSeverity] = useState("high");
   const [description, setDescription] = useState(state?.draft?.text || "");
   const [headline, setHeadline] = useState(
@@ -97,10 +100,11 @@ export default function ReportForm() {
         <div className="relative">
 
           <select
-            required value={category}
+            required value={category} disabled={departmentsLoading || !departments.length}
             onChange={(event) => setCategory(event.target.value)}
             className="w-full appearance-none rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm text-slate-700 outline-none transition focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
           >
+            {!departments.length && <option value="">{departmentsLoading ? "Loading categories..." : "Categories unavailable"}</option>}
             {departments.map(d=>d.name).map((item) => (
               <option key={item}>{item}</option>
             ))}
@@ -113,6 +117,7 @@ export default function ReportForm() {
 
         </div>
 
+        {departmentError && <p role="alert" className="mt-2 text-xs text-amber-900">{departmentError}<button type="button" disabled={departmentsLoading} onClick={loadDepartments} className="ml-2 underline">Retry categories</button></p>}
         <p className="mt-2 flex items-center gap-1 text-[10px] text-slate-500">
           <FiInfo size={12} />
           Choose the category and severity. ML suggestions are pending.
@@ -129,7 +134,7 @@ export default function ReportForm() {
         </label>
 
         <input
-          value={headline}
+          required maxLength={200} value={headline}
           onChange={(event) => setHeadline(event.target.value)}
           className="w-full rounded-lg border border-slate-200 px-3 py-3 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
         />
@@ -153,7 +158,7 @@ export default function ReportForm() {
         </div>
 
         <textarea
-          value={description}
+          required maxLength={600} value={description}
           onChange={(event) => setDescription(event.target.value.slice(0, 600))}
           rows={5}
           placeholder="Describe the civic issue, its impact, and any immediate safety concerns."
@@ -352,7 +357,7 @@ export default function ReportForm() {
         </span>
 
         <button
-          type="submit" disabled={busy || !!created}
+          type="submit" disabled={busy || !!created || departmentsLoading || !departments.length}
           className="flex items-center gap-3 rounded-lg bg-orange-500 px-6 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-orange-600"
         >
           Review report draft
