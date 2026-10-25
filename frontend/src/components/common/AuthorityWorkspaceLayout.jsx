@@ -39,9 +39,11 @@ export default function AuthorityWorkspaceLayout({ activeSection, title, childre
 
   const logout = () => {
     clearSession();
-    localStorage.removeItem("nagrikSetuAuth");
-    localStorage.removeItem("nagrikSetuRole");
-    localStorage.removeItem("nagrikSetuUser");
+    try {
+      localStorage.removeItem("nagrikSetuAuth");
+      localStorage.removeItem("nagrikSetuRole");
+      localStorage.removeItem("nagrikSetuUser");
+    } catch { /* Logout still completes when browser storage is blocked. */ }
     navigate("/authority/login");
   };
 

@@ -1,13 +1,15 @@
 import { useAuth } from "../auth";
 import { api } from "../services/api";
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { loginDestination } from "../services/navigation";
 import { Eye, EyeOff, LockKeyhole, Mail, ShieldCheck } from "lucide-react";
 
 
 export default function Login({ register = false }) {
   const { login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [notice, setNotice] = useState("");
 
   const [showPassword, setShowPassword] = useState(false);
@@ -28,7 +30,7 @@ export default function Login({ register = false }) {
       const form = new FormData(event.currentTarget);
       if(register) await api("/auth/register",{method:"POST",body:{full_name:form.get("full_name"),email:form.get("email"),password,phone:form.get("phone")?.trim() || null}});
       await login(form.get("email"), password, false);
-      navigate("/my-complaints",{replace:true});
+      navigate(loginDestination(location.state?.from),{replace:true});
     } catch(error) {setNotice(error.message);} finally {setLoading(false);}
   };
 
@@ -94,10 +96,10 @@ export default function Login({ register = false }) {
 
           <nav className="mt-5 flex flex-wrap gap-x-5 gap-y-2 border-t border-slate-100 pt-4 text-sm" aria-label="Account links">
             {register ? (
-              <Link to="/login" className="font-semibold text-orange-700">Already have an account? Login</Link>
+              <Link to="/login" state={location.state} className="font-semibold text-orange-700">Already have an account? Login</Link>
             ) : (
               <>
-                <Link to="/signup" className="font-semibold text-orange-700">Create Account</Link>
+                <Link to="/signup" state={location.state} className="font-semibold text-orange-700">Create Account</Link>
                 <Link to="/forgot-password" className="text-slate-700">Forgot Password?</Link>
               </>
             )}

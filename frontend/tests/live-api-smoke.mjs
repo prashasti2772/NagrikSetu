@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import {readFile} from "node:fs/promises";
 const store=new Map();globalThis.sessionStorage={getItem:k=>store.get(k),setItem:(k,v)=>store.set(k,v),removeItem:k=>store.delete(k)};globalThis.window=new EventTarget();
-const source=(await readFile(new URL("../src/services/api.js",import.meta.url),"utf8")).replace("import.meta.env.VITE_API_BASE_URL",JSON.stringify(process.env.SMOKE_API_BASE));
+const source=(await readFile(new URL("../src/services/api.js",import.meta.url),"utf8")).replace("import.meta.env.VITE_API_BASE_URL",JSON.stringify(process.env.SMOKE_API_BASE))
+ .replace('"./apiBase.js"',JSON.stringify(new URL("../src/services/apiBase.js",import.meta.url).href));
 const {api,setToken,listAll}=await import(`data:text/javascript;base64,${Buffer.from(source).toString("base64")}`);
 const login=async email=>{const result=await api("/auth/login",{method:"POST",body:{email,password:process.env.SMOKE_PASSWORD},accessToken:null});setToken(result.access_token);return api("/auth/me");};
 await assert.rejects(api("/authority/dashboard"),e=>e.status===401);

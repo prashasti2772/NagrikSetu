@@ -21,19 +21,23 @@ export default function AuthorityNavbar() {
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
-  const isDashboardActive = ["/admin", "/authority-dashboard"].includes(pathname);
+  const isDashboardActive = ["/admin", "/authority-dashboard", "/authority/dashboard"].includes(pathname);
   const isComplaintsActive = pathname === "/authority/complaints";
   const { user: authority, logout } = useAuth();
-  const isAuthorityLoggedIn = authority?.role === "authority";
+  const isAuthorityLoggedIn = ["authority", "admin"].includes(authority?.role);
+  const openDashboard = () => { setMobileMenuOpen(false); navigate("/authority/dashboard"); };
+  const openComplaints = () => { setMobileMenuOpen(false); navigate("/authority/complaints"); };
 
   const handleLogout = () => {
     logout();
-    localStorage.removeItem("nagrikSetuAuth");
-    localStorage.removeItem("nagrikSetuRole");
-    localStorage.removeItem("nagrikSetuUser");
+    try {
+      localStorage.removeItem("nagrikSetuAuth");
+      localStorage.removeItem("nagrikSetuRole");
+      localStorage.removeItem("nagrikSetuUser");
+    } catch { /* Logout still completes when browser storage is blocked. */ }
     setProfileOpen(false);
     setMobileMenuOpen(false);
-    navigate("/login");
+    navigate("/authority/login");
   };
 
   return (

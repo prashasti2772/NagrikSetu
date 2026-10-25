@@ -1,4 +1,7 @@
+import { useNavigate } from "react-router-dom";
+
 export default function ComplaintTracker() {
+  const navigate = useNavigate();
   return (
     <section className="bg-[#f7f9fa] px-5 py-12 lg:px-8">
       <div className="mx-auto max-w-[1380px]">
@@ -16,12 +19,12 @@ export default function ComplaintTracker() {
           </div>
 
           <div className="mt-6 w-full max-w-[390px] lg:mt-0">
-            <div className="flex overflow-hidden rounded-lg border-2 border-slate-500 bg-white">
-              <input type="text" placeholder="Enter complaint ID" className="min-w-0 flex-1 px-4 py-3 text-xs text-slate-800 outline-none" />
+            <form onSubmit={event => { event.preventDefault(); const id = new FormData(event.currentTarget).get("complaintId"); navigate(`/track-complaint?id=${encodeURIComponent(id)}`); }} className="flex overflow-hidden rounded-lg border-2 border-slate-500 bg-white">
+              <input required name="complaintId" type="text" inputMode="numeric" pattern="[1-9][0-9]*" maxLength={20} aria-label="Complaint ID" placeholder="Enter complaint ID" className="min-w-0 flex-1 px-4 py-3 text-xs text-slate-800 outline-none" />
               <button className="bg-orange-500 px-5 text-xs font-bold text-white hover:bg-orange-600">
                 Track Now
               </button>
-            </div>
+            </form>
           </div>
         </div>
       </div>

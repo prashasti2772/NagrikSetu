@@ -50,8 +50,10 @@ The backend reads `DATABASE_URL` from the process environment. `.env.example`
 is a reference, not automatically loaded. Optional Gemini, Brevo, private
 Storage, and verification-window/quorum settings are read from `backend/.env`; process environment values take
 precedence. SQL database and JWT settings remain process-environment only.
-Missing, empty, or whitespace-only values use the existing absolute path
-`backend/nagriksetu.db`, regardless of the working directory.
+In development, missing, empty, or whitespace-only values use the existing absolute
+path `backend/nagriksetu.db`, regardless of the working directory. Outside development,
+startup requires PostgreSQL with verified TLS, a stable `JWT_SECRET` of at least
+32 characters, and exact HTTPS frontend `CORS_ORIGINS`; it refuses SQLite.
 
 Expected PostgreSQL URL:
 

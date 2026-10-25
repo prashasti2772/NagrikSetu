@@ -51,9 +51,13 @@ export default function Navbar() {
   const [profileOpen, setProfileOpen] = useState(false);
   const { user, logout } = useAuth();
   const isLoggedIn = Boolean(user);
-  const visibleNavItems = isLoggedIn && user.role === "citizen"
-    ? [...navItems.slice(0, 3), { label: "My Complaints", path: "/my-complaints" }, ...navItems.slice(3)]
-    : navItems;
+  const isStaff = ["authority", "admin"].includes(user?.role);
+  const dashboardPath = isStaff ? "/authority/dashboard" : "/my-complaints";
+  const visibleNavItems = isStaff
+    ? [navItems[0], { label: "Authority Dashboard", path: dashboardPath }, ...navItems.slice(4)]
+    : isLoggedIn
+      ? [...navItems.slice(0, 3), { label: "My Complaints", path: dashboardPath }, ...navItems.slice(3)]
+      : navItems;
   const handleLogout = () => { logout(); setProfileOpen(false); setMenuOpen(false); navigate("/login"); };
 
   const isActive = (path) => {
@@ -166,9 +170,9 @@ export default function Navbar() {
                       <FiUser size={14} />
                       My Profile
                     </Link>
-                    <Link to="/my-complaints" onClick={() => setProfileOpen(false)} className="flex w-full items-center gap-2 rounded-md bg-slate-100 px-3 py-2 font-semibold text-slate-800 hover:bg-slate-200">
+                    <Link to={dashboardPath} onClick={() => setProfileOpen(false)} className="flex w-full items-center gap-2 rounded-md bg-slate-100 px-3 py-2 font-semibold text-slate-800 hover:bg-slate-200">
                       <FiSettings size={14} />
-                      My Complaints
+                      {isStaff ? "Authority Dashboard" : "My Complaints"}
                     </Link>
                     <Link to="/notifications" onClick={() => setProfileOpen(false)} className="flex w-full items-center gap-2 rounded-md bg-slate-100 px-3 py-2 font-semibold text-slate-800 hover:bg-slate-200">
                       <FiBell size={14} />
@@ -189,7 +193,8 @@ export default function Navbar() {
         <button
           onClick={() => setMenuOpen(!menuOpen)}
           className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/20 text-white xl:hidden"
-          aria-label="Open navigation"
+          aria-label={menuOpen ? "Close navigation" : "Open navigation"}
+          aria-expanded={menuOpen}
         >
           <FiMenu size={20} />
         </button>
@@ -231,7 +236,7 @@ export default function Navbar() {
               </div>
             )}
 
-            {navItems.map((item) => {
+            {visibleNavItems.map((item) => {
               const active = isActive(item.path);
 
               return (
@@ -264,7 +269,7 @@ export default function Navbar() {
             {isLoggedIn ? (
               <>
                 <Link to="/profile" onClick={() => setMenuOpen(false)} className="px-4 py-3 text-sm text-white">My Profile</Link>
-                <Link to="/my-complaints" onClick={() => setMenuOpen(false)} className="px-4 py-3 text-sm text-white">My Complaints</Link>
+                <Link to={dashboardPath} onClick={() => setMenuOpen(false)} className="px-4 py-3 text-sm text-white">{isStaff ? "Authority Dashboard" : "My Complaints"}</Link>
                 <Link to="/notifications" onClick={() => setMenuOpen(false)} className="px-4 py-3 text-sm text-white">Notifications</Link>
                 <button type="button" onClick={handleLogout} className="mt-2 rounded-lg bg-slate-100 px-4 py-3 text-left text-sm font-semibold text-slate-800">Logout</button>
               </>
