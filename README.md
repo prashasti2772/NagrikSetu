@@ -1,6 +1,5 @@
 # NagrikSetu
 
-For the 27 October 2026 Anveshana demo, use the current
 [Render and Supabase readiness report](HACKATHON_READINESS.md).
 
 NagrikSetu supports citizen civic issue reporting, intelligent routing, transparent
