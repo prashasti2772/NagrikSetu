@@ -15,3 +15,10 @@ export function matchesCategory(category, filter, query) {
   const text = [category.title, category.department, category.description, category.searchLabel, ...category.reports].join(" ").toLowerCase();
   return matchesFilter && text.includes(query.trim().toLowerCase());
 }
+
+// These are UI hints only; only a name returned by the API can be selected.
+export function resolveCategory(requested, departments) {
+ const aliases={roads:"Roads & Infrastructure",waste:"Sanitation",water:"Water Supply",streetlight:"Street Lighting",drainage:"Drainage",parks:"Parks & Gardens"};
+ const wanted=aliases[requested] || requested;
+ return departments.find(row=>row.name===wanted)?.name || "";
+}

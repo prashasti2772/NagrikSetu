@@ -1,4 +1,5 @@
 import { civicCategories } from "../../data/homeData";
+import {Link} from "react-router-dom";
 
 export default function CategoriesSection() {
   return (
@@ -22,18 +23,7 @@ export default function CategoriesSection() {
             </p>
           </div>
 
-          <div className="flex items-center gap-2 text-xs">
-            <span className="text-slate-500">
-              Filter Ward:
-            </span>
-
-            <select className="rounded-md border border-slate-200 bg-white px-3 py-2 text-xs outline-none">
-              <option>All Areas</option>
-              <option>Ward 14</option>
-              <option>Ward 28</option>
-              <option>Ward 42</option>
-            </select>
-          </div>
+          <p className="text-xs text-slate-500">Example issue types. Available reporting categories load from the application backend.</p>
 
         </div>
 
@@ -75,13 +65,13 @@ export default function CategoriesSection() {
                 {category.description}
               </p>
 
-              <a
-                href="/report-issue"
+              <Link
+                to={`/report-issue?category=${encodeURIComponent(category.id)}`}
                 className="mt-5 flex items-center justify-between text-[9px] font-medium text-orange-500"
               >
                 {category.action}
                 <span className="text-base">→</span>
-              </a>
+              </Link>
 
             </div>
           ))}

@@ -1,12 +1,14 @@
 import {api} from "../services/api";
 import {useAuth} from "../auth";
 import { useState } from "react";
+import {useLocation} from "react-router-dom";
 import { Link } from "react-router-dom";
 import { ArrowLeft, Check, Eye, EyeOff, Mail, ShieldCheck } from "lucide-react";
 
 const stages = ["Email", "Verify OTP", "New password", "Complete"];
 
 export default function ForgotPassword() {
+  const location=useLocation();
   const [step, setStep] = useState(1);
   const [email, setEmail] = useState("");
   const [otp, setOtp] = useState("");
@@ -30,9 +32,9 @@ export default function ForgotPassword() {
       {step === 1 && <form onSubmit={requestOtp} className="space-y-4"><h2 className="text-xl font-bold text-[#102943]">Enter your email</h2><label className="block text-sm font-semibold">Registered email<span className="relative mt-1.5 block"><Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} className="field !mt-0 !pl-10" placeholder="name@example.com" /></span></label><button disabled={busy} className="w-full rounded-lg bg-orange-600 py-3 font-bold text-white">Continue</button></form>}
       {step === 2 && <form onSubmit={verifyOtp} className="space-y-4"><h2 className="text-xl font-bold text-[#102943]">Verify email OTP</h2><p className="break-all text-sm text-slate-600">Code destination: {maskEmail(email)}</p><label className="block text-sm font-semibold">6-digit OTP<input required inputMode="numeric" pattern="[0-9]{6}" maxLength={6} value={otp} onChange={(event) => setOtp(event.target.value.replace(/\D/g, ""))} className="field text-center text-xl tracking-[0.35em]" placeholder="------" /></label><div className="flex justify-between text-xs"><button type="button" onClick={resend} disabled={cooldown > 0} className="font-semibold text-orange-700 disabled:text-slate-400">{cooldown ? `Resend in ${cooldown}s` : "Resend OTP"}</button><span className="text-slate-500">Expiry status provided by recovery service</span></div><button disabled={busy} className="w-full rounded-lg bg-orange-600 py-3 font-bold text-white">Verify OTP</button></form>}
       {step === 3 && <form onSubmit={submitPassword} className="space-y-4"><h2 className="text-xl font-bold text-[#102943]">Choose a new password</h2><PasswordField label="New password" value={password} onChange={setPassword} show={showPassword} toggle={() => setShowPassword((value) => !value)} /><PasswordField label="Confirm new password" value={confirm} onChange={setConfirm} show={showConfirm} toggle={() => setShowConfirm((value) => !value)} /><button disabled={busy} className="flex w-full items-center justify-center gap-2 rounded-lg bg-orange-600 py-3 font-bold text-white"><ShieldCheck size={16} />Reset Password</button></form>}
-      {step === 4 && <div className="text-center"><span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-800"><Check size={24} /></span><h2 className="mt-4 text-2xl font-bold text-[#102943]">Password reset complete</h2><p className="mt-2 text-sm text-slate-600">Your password was changed. Sign in with your new password.</p><Link to="/login" className="mt-5 inline-flex rounded-lg bg-orange-600 px-5 py-3 font-bold text-white">Return to Sign In</Link></div>}
+      {step === 4 && <div className="text-center"><span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-800"><Check size={24} /></span><h2 className="mt-4 text-2xl font-bold text-[#102943]">Password reset complete</h2><p className="mt-2 text-sm text-slate-600">Your password was changed. Sign in with your new password.</p><Link to="/login" state={location.state} className="mt-5 inline-flex rounded-lg bg-orange-600 px-5 py-3 font-bold text-white">Return to Sign In</Link></div>}
       {message && <p role="status" className="mt-5 rounded-md bg-amber-50 p-3 text-xs leading-5 text-amber-900">{message}</p>}
-      <Link to="/login" className="mt-5 inline-flex items-center gap-1 text-sm text-slate-600"><ArrowLeft size={15} />Return to Sign In</Link>
+      <Link to="/login" state={location.state} className="mt-5 inline-flex items-center gap-1 text-sm text-slate-600"><ArrowLeft size={15} />Return to Sign In</Link>
     </div></section></main>;
 }
 

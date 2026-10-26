@@ -16,7 +16,8 @@ export async function api(path, {method="GET", body, accessToken=token, signal}=
  if(!response.ok) {
   if(response.status===401 && accessToken === token && token) { setToken(null); window.dispatchEvent(new Event("session-expired")); }
   const detail=data?.detail;
-  const error=new Error(Array.isArray(detail) ? detail.map(x=>`${x.loc?.filter(v=>v!=="body").join(".")}: ${x.msg}`).join("; ") : typeof detail === "string" ? detail : `Request failed (${response.status})`);
+  const unavailable=[502,503,504].includes(response.status);
+  const error=new Error(unavailable ? "Temporary service unavailability. Please try again later." : Array.isArray(detail) ? detail.map(x=>`${x.loc?.filter(v=>v!=="body").join(".")}: ${x.msg}`).join("; ") : typeof detail === "string" ? detail : `Request failed (${response.status})`);
   error.status=response.status; error.retryAfter=response.headers.get("Retry-After"); if(response.status===429 && error.retryAfter) error.message += ` Retry after ${error.retryAfter} seconds.`; throw error;
  }
  if(response.status!==204 && data===null) throw new Error("The backend returned an invalid response. Check the API URL and try again.");

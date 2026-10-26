@@ -1,3 +1,4 @@
+import {useLanguage} from "../language";
 import {useEffect,useState,useCallback,useRef} from "react";
 export function useResource(loader, dependencies=[]) {
  const loaderRef=useRef(loader);
@@ -20,7 +21,8 @@ export function useResource(loader, dependencies=[]) {
  return {data,error,loading,reload,setData};
 }
 export function ResourceState({resource}) {
- if(resource.loading)return <p role="status" className="p-5">Loading...</p>;
- if(resource.error)return <div role="alert" className="p-5 text-red-700">{resource.error}<button onClick={resource.reload} className="ml-3 underline">Retry</button></div>;
+ const {t}=useLanguage();
+ if(resource.loading)return <p role="status" className="p-5">{t("Loading...")}</p>;
+ if(resource.error)return <div role="alert" className="p-5 text-red-700">{t(resource.error)}<button onClick={resource.reload} className="ml-3 min-h-11 underline">{t("Retry")}</button></div>;
  return null;
 }

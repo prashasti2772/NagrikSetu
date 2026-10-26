@@ -1,7 +1,9 @@
+import {useLanguage} from "../../language";
 import { Link } from "react-router-dom";
 import logo from "../../assets/logo/nagriksetu-logo.png";
 
 export default function Footer({ authority = false }) {
+ const {t}=useLanguage();
   if (authority) {
     return (
       <footer className="mt-10 bg-[#071d35] text-white">
@@ -27,7 +29,7 @@ export default function Footer({ authority = false }) {
               <div className="space-y-3 text-xs text-gray-400">
                 <Link to="/authority/reports" className="block hover:text-white">Reports</Link>
                 <Link to="/authority/departments" className="block hover:text-white">Departments</Link>
-                <Link to="/authority/notifications" className="block hover:text-white">Notifications</Link>
+                <Link to="/authority/notifications" className="block hover:text-white">{t("Notifications")}</Link>
                 <Link to="/authority/profile" className="block hover:text-white">Profile</Link>
               </div>
             </div>
@@ -72,10 +74,10 @@ export default function Footer({ authority = false }) {
           <div>
             <h3 className="text-xs font-bold">Quick Links</h3>
             <div className="mt-4 space-y-2 text-[9px] text-slate-300">
-              <Link to="/resources" className="block hover:text-white">Resources</Link>
+              <Link to="/resources" className="block hover:text-white">{t("Resources")}</Link>
               <Link to="/help-support" className="block hover:text-white">Help &amp; Support</Link>
-              <Link to="/report-issue" className="block hover:text-white">Report Issue</Link>
-              <Link to="/track-complaint" className="block hover:text-white">Track Complaint</Link>
+              <Link to="/report-issue" className="block hover:text-white">{t("Report Issue")}</Link>
+              <Link to="/track-complaint" className="block hover:text-white">{t("Track Complaint")}</Link>
             </div>
           </div>
 

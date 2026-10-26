@@ -1,3 +1,4 @@
+import {chatRequest,replyLanguages} from "../services/chatLanguage";
 import {api} from "../services/api";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
@@ -8,7 +9,7 @@ const chatbotLanguages = [
   { code: "en", label: "English" },
   { code: "hi", label: "हिन्दी" },
 ];
-const translationProviderAvailable = false;
+
 
 export default function HelpSupport() {
   const [text, setText] = useState("");
@@ -25,7 +26,7 @@ export default function HelpSupport() {
   const [responseLanguage, setResponseLanguage] = useState("en");
   const imageInput = useRef(null);
   const previewUrls = useRef([]);
-  const effectiveResponseLanguage = translationProviderAvailable ? responseLanguage : "en";
+  const effectiveResponseLanguage = responseLanguage;
 
   useEffect(() => () => previewUrls.current.forEach((url) => URL.revokeObjectURL(url)), []);
 
@@ -38,7 +39,7 @@ export default function HelpSupport() {
     const language = event.target.value;
     setSelectedLanguage(language);
     setResponseLanguage(language);
-    setNotice(`${chatbotLanguages.find((item) => item.code === language)?.label} selected. Translation is unavailable; the assistant stays in English until a translation service is connected.`);
+    setNotice(language === "hi" ? "हिन्दी मार्गदर्शन चुना गया है। विस्तृत द्विभाषी सहायक की समीक्षा जारी है।" : "English guidance selected. The expanded bilingual assistant is under review.");
   };
 
   const selectImage = (event) => {
@@ -78,8 +79,8 @@ export default function HelpSupport() {
     setLoading(true);
     try {
       if(entry.image){setDraft({...entry,file:image});setNotice("Image saved as a local draft. Review in Report Issue; ML image classification is pending.");}
-      else {const result=await api("/chatbot/message",{method:"POST",body:{message:entry.text}});setMessages(current=>[...current,{text:result.answer,effectiveResponseLanguage:"en",responseLanguage:"en",detectedLanguage:"en"}]);setDraft({...entry,file:image});setNotice("");}
-    } catch(error){setNotice(error.message);} finally {setLoading(false);}
+      else {const result=await api("/chatbot/message",{method:"POST",body:chatRequest(entry.text,selectedLanguage)});setMessages(current=>[...current,{text:result.answer,...replyLanguages(result,selectedLanguage),complaint:result.complaint}]);setDraft(result.complaint_draft ? {...entry,text:result.complaint_draft.description,file:image} : null);setResponseLanguage(result.response_language || "en");setNotice("");}
+    } catch(error){setText(entry.text);setNotice(error.message);} finally {setLoading(false);}
   }
 
   return (
@@ -112,9 +113,9 @@ export default function HelpSupport() {
           <div aria-live="polite" className="max-h-80 min-h-40 space-y-3 overflow-y-auto bg-slate-50 p-4">
             {messages.length === 0 && <p className="text-sm text-slate-600">Tell us about the issue, and we will help you prepare a draft.</p>}
             {messages.map((entry, index) => (
-              <article key={`${entry.image || "message"}-${index}`} className="rounded-lg border border-slate-100 bg-white p-3 text-sm">
+              <article lang={entry.effectiveResponseLanguage === "hi" ? "hi" : "en"} key={`${entry.image || "message"}-${index}`} className="rounded-lg border border-slate-100 bg-white p-3 text-sm">
                 <p className="whitespace-pre-wrap break-words">{entry.text}</p>
-                {entry.imagePreview && <img src={entry.imagePreview} alt="Attached evidence preview" className="mt-2 max-h-40 max-w-full rounded-md object-contain" />}
+                {entry.complaint && <p className="my-2 text-xs">#{entry.complaint.id}: {entry.complaint.status}<br/><Link to={`/my-complaints/${entry.complaint.id}`} className="underline">View your complaint / अपनी शिकायत देखें</Link></p>}{entry.imagePreview && <img src={entry.imagePreview} alt="Attached evidence preview" className="mt-2 max-h-40 max-w-full rounded-md object-contain" />}
                 {entry.location && <p className="mt-2 text-xs text-slate-600">Incident location attached</p>}
                 <p className="mt-2 text-[10px] text-slate-500">
                   Detected: {entry.detectedLanguage === "hi" ? "हिन्दी" : "English"} · Requested: {entry.responseLanguage === "hi" ? "हिन्दी" : "English"} · Active: {entry.effectiveResponseLanguage === "hi" ? "हिन्दी" : "English"}
@@ -137,10 +138,10 @@ export default function HelpSupport() {
             <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-slate-50 px-3 py-2 text-[11px] text-slate-600">
               <span>Detected: <strong>{detectedLanguage === "hi" ? "हिन्दी" : "English"}</strong></span>
               <span>Response language: <strong>{responseLanguage === "hi" ? "हिन्दी" : "English"}</strong></span>
-              <span className="text-amber-800">Translation provider unavailable; fallback remains English.</span>
+              <span className="text-amber-800">Expanded bilingual FAQs and voice assistance are under review.</span>
             </div>
 
-            <div className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white p-2 focus-within:border-orange-400 sm:gap-2">
+            <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-slate-200 bg-white p-2 focus-within:border-orange-400 sm:gap-2">
               <button type="button" aria-label="Voice input" title="Voice input" onClick={() => setNotice("Voice transcription is not connected yet.")} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100"><Mic size={18} /></button>
               <button type="button" aria-label={image ? "Replace image" : "Attach image"} title={image ? "Replace image" : "Attach image"} onClick={() => imageInput.current?.click()} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100"><ImagePlus size={18} /></button>
               <input ref={imageInput} type="file" accept="image/*" onChange={selectImage} className="sr-only" aria-label="Choose an image" />
@@ -151,7 +152,7 @@ export default function HelpSupport() {
                   {chatbotLanguages.map((item) => <option key={item.code} value={item.code}>{item.label}</option>)}
                 </select>
               </label>
-              <input aria-label="Chat message" value={text} onChange={(event) => updateText(event.target.value)} className="min-w-0 flex-1 border-0 bg-transparent px-2 py-2 text-sm outline-none" placeholder="Write a message..." />
+              <input aria-label="Chat message" value={text} onChange={(event) => updateText(event.target.value)} maxLength={2000} className="order-last min-w-0 basis-full border-0 bg-transparent px-2 py-2 text-sm outline-none sm:order-none sm:basis-auto sm:flex-1" placeholder="Write a message..." />
               <button disabled={loading} aria-label="Send message" title="Send message" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-orange-600 text-white hover:bg-orange-700 disabled:opacity-50"><Send size={17} /></button>
             </div>
 
@@ -163,7 +164,7 @@ export default function HelpSupport() {
             <section className="m-4 rounded-xl border border-orange-200 bg-orange-50 p-4">
               <h3 className="font-bold">Complaint draft</h3>
               <p className="my-3 whitespace-pre-wrap break-words text-sm">{draft.text || "Image evidence draft"}</p>
-              <p className="text-xs">{draft.image || "No image"} · {draft.location ? "Location attached" : "Location needed"}</p>
+              <p className="text-xs">{draft.image || "No image"} · {draft.location ? "Location attached" : "Location optional"}</p>
               <p className="my-3 text-xs">Review category, location, and description in the report form before final submission.</p>
               <Link to="/report-issue" state={{ draft }} className="text-sm font-semibold text-orange-700 underline">Review in Report Issue</Link>
               <button type="button" onClick={() => setDraft(null)} className="ml-3 text-xs underline">Discard</button>

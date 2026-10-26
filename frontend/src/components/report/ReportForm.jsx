@@ -1,4 +1,6 @@
+import {useLanguage} from "../../language";
 import {api} from "../../services/api";
+import {resolveCategory} from "../../services/categoryDirectory";
 import {Link} from "react-router-dom";
 import { useLocation } from "react-router-dom";
 import LocationPicker from "../common/LocationPicker";
@@ -20,6 +22,7 @@ import {
 } from "../../data/reportIssueData";
 
 export default function ReportForm() {
+ const {t}=useLanguage();
   const { state } = useLocation();
   const [location, setLocation] = useState(state?.draft?.location || null);
   const [busy,setBusy]=useState(false);
@@ -33,7 +36,7 @@ export default function ReportForm() {
   const [notice, setNotice] = useState("");
 
   const [category, setCategory] = useState(new URLSearchParams(window.location.search).get("category") || issueCategories[0]);
-  const loadDepartments=()=>{setDepartmentsLoading(true);setDepartmentError("");api("/departments").then(rows=>{if(!Array.isArray(rows))throw new Error("The backend returned invalid categories. Please try again.");setDepartments(rows);setCategory(current=>rows.some(d=>d.name===current)?current:rows[0]?.name || "");if(!rows.length)setDepartmentError("No issue categories are available. Please contact support.");}).catch(e=>setDepartmentError(e.message)).finally(()=>setDepartmentsLoading(false));};
+  const loadDepartments=()=>{setDepartmentsLoading(true);setDepartmentError("");api("/departments").then(rows=>{if(!Array.isArray(rows))throw new Error("The backend returned invalid categories. Please try again.");setDepartments(rows);setCategory(current=>resolveCategory(current,rows));if(!rows.length)setDepartmentError("No issue categories are available. Please contact support.");}).catch(e=>setDepartmentError(e.message)).finally(()=>setDepartmentsLoading(false));};
   useEffect(()=>{Promise.resolve().then(loadDepartments);},[]);
   const [severity, setSeverity] = useState("high");
   const [description, setDescription] = useState(state?.draft?.text || "");
@@ -84,15 +87,15 @@ export default function ReportForm() {
 
         <div className="mb-2 flex items-center justify-between">
 
-          <label className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+          <label htmlFor="issue-category" className="flex items-center gap-2 text-sm font-semibold text-slate-900">
             <FiFileText className="text-orange-600" size={15} />
-            Issue Category
+            {t("Issue Category")}
             <span className="text-red-500">*</span>
           </label>
 
           <span className="flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 text-[10px] font-semibold text-emerald-600">
             <FiCheckCircle size={12} />
-            Manual category selection
+            {t("Manual category selection")}
           </span>
 
         </div>
@@ -100,11 +103,11 @@ export default function ReportForm() {
         <div className="relative">
 
           <select
-            required value={category} disabled={departmentsLoading || !departments.length}
+            id="issue-category" required value={category} disabled={departmentsLoading || !departments.length}
             onChange={(event) => setCategory(event.target.value)}
             className="w-full appearance-none rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm text-slate-700 outline-none transition focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
           >
-            {!departments.length && <option value="">{departmentsLoading ? "Loading categories..." : "Categories unavailable"}</option>}
+            <option value="">{departmentsLoading ? t("Loading categories...") : !departments.length ? t("Categories unavailable") : t("Choose a category")}</option>
             {departments.map(d=>d.name).map((item) => (
               <option key={item}>{item}</option>
             ))}
@@ -117,10 +120,10 @@ export default function ReportForm() {
 
         </div>
 
-        {departmentError && <p role="alert" className="mt-2 text-xs text-amber-900">{departmentError}<button type="button" disabled={departmentsLoading} onClick={loadDepartments} className="ml-2 underline">Retry categories</button></p>}
+        {departmentError && <p role="alert" className="mt-2 text-xs text-amber-900">{departmentError}<button type="button" disabled={departmentsLoading} onClick={loadDepartments} className="ml-2 underline">{t("Retry categories")}</button></p>}
         <p className="mt-2 flex items-center gap-1 text-[10px] text-slate-500">
           <FiInfo size={12} />
-          Choose the category and severity. ML suggestions are pending.
+          {t("Choose the category and severity. ML suggestions are pending.")}
         </p>
 
       </div>
@@ -128,13 +131,13 @@ export default function ReportForm() {
       {/* Headline */}
       <div className="mb-5">
 
-        <label className="mb-2 block text-sm font-semibold text-slate-900">
-          Grievance Headline / Summary
+        <label htmlFor="issue-headline" className="mb-2 block text-sm font-semibold text-slate-900">
+          {t("Grievance Headline / Summary")}
           <span className="ml-1 text-red-500">*</span>
         </label>
 
         <input
-          required maxLength={200} value={headline}
+          id="issue-headline" required maxLength={200} value={headline}
           onChange={(event) => setHeadline(event.target.value)}
           className="w-full rounded-lg border border-slate-200 px-3 py-3 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
         />
@@ -146,8 +149,8 @@ export default function ReportForm() {
 
         <div className="mb-2 flex justify-between">
 
-          <label className="text-sm font-semibold text-slate-900">
-            Detailed Description & Ground Impact
+          <label htmlFor="issue-description" className="text-sm font-semibold text-slate-900">
+            {t("Detailed Description & Ground Impact")}
             <span className="ml-1 text-red-500">*</span>
           </label>
 
@@ -157,7 +160,7 @@ export default function ReportForm() {
 
         </div>
 
-        <textarea
+        <textarea id="issue-description"
           required maxLength={600} value={description}
           onChange={(event) => setDescription(event.target.value.slice(0, 600))}
           rows={5}

@@ -1,11 +1,12 @@
 import { useAuth } from "../../auth";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import {api} from "../../services/api";
+import {hasUnread} from "../../services/notificationState";
+import {LanguagePicker, useLanguage} from "../../language";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   FiMenu,
-  FiGlobe,
   FiUser,
-  FiChevronDown,
   FiLogOut,
   FiBell,
   FiSettings,
@@ -50,13 +51,26 @@ export default function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const { user, logout } = useAuth();
+  const {t}=useLanguage();
+  const [badge,setBadge]=useState(null);
+  useEffect(()=>{
+    if(!user)return;
+    const controller=new AbortController();
+    let latest=0;
+    const refresh=()=>{const request=++latest;return api("/notifications?is_read=false&limit=1",{signal:controller.signal})
+      .then(rows=>{if(!controller.signal.aborted && request===latest)setBadge({owner:user.id,unread:hasUnread(rows)});})
+      .catch(()=>{if(!controller.signal.aborted && request===latest)setBadge(null);});};
+    refresh();window.addEventListener("notifications-updated",refresh);
+    return()=>{controller.abort();window.removeEventListener("notifications-updated",refresh);};
+  },[user,location.pathname]);
+  const unread=Boolean(user && badge?.owner===user.id && badge.unread);
   const isLoggedIn = Boolean(user);
   const isStaff = ["authority", "admin"].includes(user?.role);
   const dashboardPath = isStaff ? "/authority/dashboard" : "/my-complaints";
   const visibleNavItems = isStaff
-    ? [navItems[0], { label: "Authority Dashboard", path: dashboardPath }, ...navItems.slice(4)]
+    ? [navItems[0], { label: t("Authority Dashboard"), path: dashboardPath }, ...navItems.slice(4)]
     : isLoggedIn
-      ? [...navItems.slice(0, 3), { label: "My Complaints", path: dashboardPath }, ...navItems.slice(3)]
+      ? [...navItems.slice(0, 3), { label: t("My Complaints"), path: dashboardPath }, ...navItems.slice(3)]
       : navItems;
   const handleLogout = () => { logout(); setProfileOpen(false); setMenuOpen(false); navigate("/login"); };
 
@@ -108,7 +122,7 @@ export default function Navbar() {
                   }
                 `}
               >
-                {item.label}
+                {t(item.label)}
 
                 {/* Active underline */}
                 {active && (
@@ -119,20 +133,16 @@ export default function Navbar() {
           })}
 
           {/* Language */}
-          <button className="ml-3 flex items-center gap-1 rounded-full bg-slate-100 px-3 py-2 text-[10px] text-slate-700">
-            <FiGlobe size={13} />
-            English
-            <FiChevronDown size={12} />
-          </button>
+          <LanguagePicker />
 
           <Link
             to="/notifications"
-            aria-label="Notifications"
-            title="Notifications"
+            aria-label={t("Notifications")}
+            title={t("Notifications")}
             className={`relative ml-2 flex h-9 w-9 items-center justify-center rounded-full transition ${isActive("/notifications") ? "bg-orange-50 text-orange-700" : "bg-slate-100 text-slate-700 hover:bg-slate-200"}`}
           >
             <FiBell size={16} />
-            <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-orange-600" />
+            {unread && <span aria-label={t("Unread notifications")} className="absolute right-1 top-1 h-2 w-2 rounded-full bg-orange-600" />}
           </Link>
 
           {/* Login */}
@@ -141,11 +151,10 @@ export default function Navbar() {
               to="/login"
               className="ml-3 rounded-lg bg-orange-500 px-5 py-2.5 text-[11px] font-bold leading-tight text-white transition hover:bg-orange-600"
             >
-              Login /
-              <br />
-              Register
+              {t("Login")}
             </Link>
           )}
+          {!isLoggedIn && <Link to="/signup" className="ml-2 rounded-lg border border-orange-300 px-3 py-3 text-xs text-white">{t("Create Account")}</Link>}
 
           {isLoggedIn && (
             <div className="relative ml-3">
@@ -168,19 +177,19 @@ export default function Navbar() {
                   <div className="mt-3 space-y-2">
                     <Link to="/profile" onClick={() => setProfileOpen(false)} className="flex w-full items-center gap-2 rounded-md bg-slate-100 px-3 py-2 font-semibold text-slate-800 hover:bg-slate-200">
                       <FiUser size={14} />
-                      My Profile
+                      {t("My Profile")}
                     </Link>
                     <Link to={dashboardPath} onClick={() => setProfileOpen(false)} className="flex w-full items-center gap-2 rounded-md bg-slate-100 px-3 py-2 font-semibold text-slate-800 hover:bg-slate-200">
                       <FiSettings size={14} />
-                      {isStaff ? "Authority Dashboard" : "My Complaints"}
+                      {isStaff ? t("Authority Dashboard") : t("My Complaints")}
                     </Link>
                     <Link to="/notifications" onClick={() => setProfileOpen(false)} className="flex w-full items-center gap-2 rounded-md bg-slate-100 px-3 py-2 font-semibold text-slate-800 hover:bg-slate-200">
                       <FiBell size={14} />
-                      Notifications
+                      {t("Notifications")}
                     </Link>
                     <button type="button" onClick={handleLogout} className="mt-1 flex w-full items-center gap-2 rounded-md bg-slate-100 px-3 py-2 font-semibold text-slate-800 hover:bg-slate-200">
                       <FiLogOut size={14} />
-                      Logout
+                      {t("Logout")}
                     </button>
                   </div>
                 </div>
@@ -223,7 +232,7 @@ export default function Navbar() {
                   className="mt-3 flex w-full items-center justify-center gap-2 rounded-md bg-slate-200 px-3 py-2 text-sm font-semibold text-slate-800"
                 >
                   <FiSettings size={15} />
-                  Profile Settings
+                  {t("Profile Settings")}
                 </Link>
                 <button
                   type="button"
@@ -231,7 +240,7 @@ export default function Navbar() {
                   className="mt-2 flex w-full items-center justify-center gap-2 rounded-md bg-slate-200 px-3 py-2 text-sm font-semibold text-slate-800"
                 >
                   <FiLogOut size={15} />
-                  Log out
+                  {t("Log out")}
                 </button>
               </div>
             )}
@@ -253,7 +262,7 @@ export default function Navbar() {
                     }
                   `}
                 >
-                  {item.label}
+                {t(item.label)}
                 </Link>
               );
             })}
@@ -263,24 +272,25 @@ export default function Navbar() {
               onClick={() => setMenuOpen(false)}
               className={`border-l-4 px-4 py-3 text-sm ${isActive("/notifications") ? "border-orange-500 bg-orange-50 font-semibold text-orange-600" : "border-transparent text-white"}`}
             >
-              Notifications
+              {t("Notifications")}
             </Link>
 
+            <LanguagePicker />
             {isLoggedIn ? (
               <>
-                <Link to="/profile" onClick={() => setMenuOpen(false)} className="px-4 py-3 text-sm text-white">My Profile</Link>
-                <Link to={dashboardPath} onClick={() => setMenuOpen(false)} className="px-4 py-3 text-sm text-white">{isStaff ? "Authority Dashboard" : "My Complaints"}</Link>
-                <Link to="/notifications" onClick={() => setMenuOpen(false)} className="px-4 py-3 text-sm text-white">Notifications</Link>
-                <button type="button" onClick={handleLogout} className="mt-2 rounded-lg bg-slate-100 px-4 py-3 text-left text-sm font-semibold text-slate-800">Logout</button>
+                <Link to="/profile" onClick={() => setMenuOpen(false)} className="px-4 py-3 text-sm text-white">{t("My Profile")}</Link>
+                <Link to={dashboardPath} onClick={() => setMenuOpen(false)} className="px-4 py-3 text-sm text-white">{isStaff ? t("Authority Dashboard") : t("My Complaints")}</Link>
+                <Link to="/notifications" onClick={() => setMenuOpen(false)} className="px-4 py-3 text-sm text-white">{t("Notifications")}</Link>
+                <button type="button" onClick={handleLogout} className="mt-2 rounded-lg bg-slate-100 px-4 py-3 text-left text-sm font-semibold text-slate-800">{t("Logout")}</button>
               </>
             ) : (
-              <Link
+              <><Link
                 to="/login"
                 onClick={() => setMenuOpen(false)}
                 className="mt-3 rounded-lg bg-orange-500 px-4 py-3 text-center text-sm font-bold text-white"
               >
-                Login / Register
-              </Link>
+                {t("Login")}
+              </Link><Link to="/signup" onClick={()=>setMenuOpen(false)} className="mt-2 rounded-lg border border-orange-300 px-4 py-3 text-center text-sm text-white">{t("Create Account")}</Link></>
             )}
 
           </div>
